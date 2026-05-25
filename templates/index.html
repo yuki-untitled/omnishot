@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniShot</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div id="guideModal" class="preview-modal" style="display:none; z-index: 2000;">
+        <div class="preview-content" style="background: #1a1a1a; padding: 25px; border-radius: 12px; max-width: 600px; width: 90%; border: 1px solid #333;">
+            <h2 style="margin-top:0; color: #2ecc71; border-bottom: 2px solid #2ecc71; padding-bottom: 10px;">🚀 初回セットアップガイド</h2>
+            <p style="font-size: 14px; color: #bbb;">本アプリを使用するには、接続するスマートフォン側で以下の「開発者向け設定」を有効にする必要があります。</p>
+            
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <button id="tabAndroidBtn" class="btn start" style="flex: 1;">🤖 Android の設定</button>
+                <button id="tabIosBtn" class="btn" style="flex: 1; background: #555;">🍏 iPhone (iOS) の設定</button>
+            </div>
+
+            <div id="guideAndroid" style="font-size: 14px; line-height: 1.6;">
+                <ol style="padding-left: 20px;">
+                    <li>スマホの<b>「設定」</b> ＞ <b>「端末情報」</b>（またはシステム）を開く</li>
+                    <li><b>「ビルド番号」</b>を <b>7回連続でタップ</b>する（パスコード入力を求められます）</li>
+                    <li>設定に戻り、追加された<b>「開発者オプション」</b>を開く</li>
+                    <li><b>「USBデバッグ」</b>を <b>ON</b> にする</li>
+                    <li>PCと接続時、スマホ画面に出る「USBデバッグを許可しますか？」を<b>許可</b>する</li>
+                </ol>
+            </div>
+
+            <div id="guideIos" style="font-size: 14px; line-height: 1.6; display: none;">
+                <ol style="padding-left: 20px;">
+                    <li>iPhoneの<b>「設定」</b> ＞ <b>「プライバシーとセキュリティ」</b>を開く</li>
+                    <li>最下部にある<b>「デベロッパーモード」</b>を開き、<b>ON</b> にする</li>
+                    <li>端末を<b>再起動</b>し、ロック解除後に表示されるダイアログで<b>「オンにする」</b>をタップ</li>
+                    <li>USB接続時、画面に出る「このコンピュータを信頼しますか？」で<b>「信頼」</b>をタップ</li>
+                </ol>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0;">
+            
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <label style="font-size: 13px; color: #888; cursor: pointer;">
+                    <input type="checkbox" id="skipGuideCheck"> 次回から表示しない
+                </label>
+                <button id="closeGuideBtn" class="btn start" style="padding: 8px 20px;">閉じる</button>
+            </div>
+        </div>
+    </div>
+    <div class="header">
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 15px;">
+            <h1 style="margin: 0;">📱 OmniShot</h1>
+            
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <a href="{{ url_for('help_page') }}" class="btn" style="background: #555; color: #fff; padding: 6px 14px; font-size: 13px; border-radius: 20px; transition: background 0.2s; text-decoration: none;" onmouseover="this.style.background='#666'" onmouseout="this.style.background='#555'">ℹ️ 使い方</a>
+                <button id="openGuideBtn" class="btn" style="background: #444; color: #fff; padding: 6px 14px; font-size: 13px; border-radius: 20px; transition: background 0.2s;" onmouseover="this.style.background='#555'" onmouseout="this.style.background='#444'">❓ 設定ガイド</button>
+                <button class="btn btn-danger" onclick="shutdownApp()" style="background-color: #dc3545; color: white; padding: 6px 14px; font-size: 13px; border-radius: 20px;">🛑 アプリ終了</button>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <input type="text" id="prefix" placeholder="ファイル名の接頭辞 (例: ログイン画面)">
+            <label>チェック間隔: <input type="number" id="checkInterval" value="1.0" step="0.1">s</label>
+            
+            <!-- 静的モード用コントロール -->
+            <label id="staticLabel" style="display: inline;">静止待ち時間: <input type="number" id="settlingTime" value="2.0" step="0.1">s</label>
+            
+            <!-- 動的モード用コントロール -->
+            <label id="dynamicLabel" style="display: none;">判定回数: <input type="number" id="judgeCount" value="3" min="0" max="50">回</label>
+            
+            <label>モード: <select id="modeSelect" style="padding: 8px; border-radius: 5px; border: 1px solid #333; background: #252525; color: white;">
+                <option value="static">静的モード</option>
+                <option value="dynamic">動的モード</option>
+            </select></label>
+            <button id="startBtn" class="btn start">自動撮影開始</button>
+            <button id="stopBtn" class="btn stop">停止</button>
+            <span id="status">Status: Idle</span>
+        </div>
+
+        <div class="controls">
+            <button id="selectAllBtn" class="btn" style="background: #3498db;">全選択</button>
+            <button id="deselectAllBtn" class="btn" style="background: #999; display:none;">選択解除</button>
+            <button id="deleteSelectedBtn" class="btn stop" style="display:none;">消去 (<span id="selectCount">0</span>)</button>
+            <button id="downloadBtn" class="btn start" style="display:none; background: #3498db;">ダウンロード (<span id="downloadCount">0</span>)</button>
+        </div>
+
+        <div class="log-container">
+            <h3>Live Logs</h3>
+            <div id="logConsole" class="log-console"></div>
+        </div>
+    </div>
+    
+    <div id="gallery" class="gallery"></div>
+
+    <!-- モーダル -->
+    <div id="previewModal" class="preview-modal" style="display:none;">
+        <div class="preview-content">
+            <button id="closeModalBtn" class="close-modal">&times;</button>
+            <button id="prevBtn" class="nav-btn prev-btn">&#10094;</button>
+            <img id="previewImage" src="" alt="Preview">
+            <button id="nextBtn" class="nav-btn next-btn">&#10095;</button>
+            <div id="previewInfo" class="preview-info"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

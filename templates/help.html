@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>使い方 - OmniShot</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="header">
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 15px;">
+            <div>
+                <a href="{{ url_for('index') }}" class="btn" style="background: #3498db; color: white; padding: 8px 14px; font-size: 13px; border-radius: 20px; text-decoration: none;">← 戻る</a>
+            </div>
+            <h1 style="margin: 0;">📘 OmniShot 使い方</h1>
+            <div></div>
+        </div>
+        <div style="background: #161616; border: 1px solid #333; border-radius: 12px; padding: 18px; line-height: 1.7;">
+            <h2>1. まずは基本操作</h2>
+            <ul style="padding-left: 20px;">
+                <li>画面上部の「使い方」ボタンからいつでもこのページに戻れます。</li>
+                <li>左上の「← 戻る」を押すとメイン画面に戻ります。</li>
+                <li>「自動撮影開始」ボタンでキャプチャが開始されます。</li>
+            </ul>
+
+            <h2>2. モードの違い</h2>
+            <ul style="padding-left: 20px;">
+                <li><b>静的モード</b>：画面に変化があったあと、指定した待ち時間を経過してから撮影します。</li>
+                <li><b>動的モード</b>：画面が静止しているかどうかを判定し、静止が確定したタイミングで1回撮影します。</li>
+            </ul>
+
+            <h2>3. 使い方の流れ</h2>
+            <ol style="padding-left: 20px;">
+                <li>「ファイル名の接頭辞」を必要に応じて入力します。</li>
+                <li>「チェック間隔」を設定します。小さいほど頻繁に画面をチェックします。</li>
+                <li>静的モードなら「静止待ち時間」、動的モードなら「判定回数」を設定します。</li>
+                <li>「自動撮影開始」をクリックしてキャプチャを開始します。</li>
+                <li>撮影した画像はギャラリーに追加されます。</li>
+            </ol>
+
+            <h2>4. ギャラリーの使い方</h2>
+            <ul style="padding-left: 20px;">
+                <li>画像をクリックするとプレビューが開きます。</li>
+                <li>チェックボックスで選択し、削除やダウンロードができます。</li>
+                <li>「全選択」「選択解除」を使ってまとめて操作できます。</li>
+            </ul>
+
+            <h2>5. 設定ガイド</h2>
+            <p>接続したスマホで開発者向け設定を有効にしてください。以下の手順を参考にしてください。</p>
+
+            <h3>Android の設定</h3>
+            <ol style="padding-left: 20px;">
+                <li>スマホの <b>「設定」</b> を開き、<b>「端末情報」</b> または <b>「システム」</b> を開きます。</li>
+                <li><b>「ビルド番号」</b> を <b>7回連続でタップ</b> します。（必要に応じてパスコードを入力します）</li>
+                <li>設定に戻り、追加された <b>「開発者オプション」</b> を開きます。</li>
+                <li><b>「USBデバッグ」</b> を有効にします。</li>
+                <li>PCと接続したときに表示される「USBデバッグを許可しますか？」を <b>許可</b> します。</li>
+            </ol>
+
+            <h3>iPhone (iOS) の設定</h3>
+            <ol style="padding-left: 20px;">
+                <li>iPhoneの <b>「設定」</b> を開き、<b>「プライバシーとセキュリティ」</b> を選択します。</li>
+                <li>最下部にある <b>「デベロッパーモード」</b> を開き、<b>ON</b> にします。</li>
+                <li>端末を再起動し、ロック解除後に表示されるダイアログで <b>「オンにする」</b> をタップします。</li>
+                <li>USB接続時に表示される「このコンピュータを信頼しますか？」で <b>「信頼」</b> を選びます。</li>
+            </ol>
+
+            <h2>6. トラブルシューティング</h2>
+            <ul style="padding-left: 20px;">
+                <li>画面表示が崩れる場合は、ブラウザの再読み込みを行ってください。</li>
+                <li>Wi-Fi / USB接続の問題がある場合は、スマホの再接続を試してください。</li>
+                <li>ログが遅いと感じたら、ブラウザのページを再読み込みするか、Web UI の更新を待ってください。</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
