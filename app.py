@@ -15,6 +15,9 @@ import logging
 import json
 from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, Response
 
+# Windows用にウインドウ非表示フラグを定義
+CREATE_NO_WINDOW = 0x08000000 if platform.system() == "Windows" else 0
+
 # PyInstallerパッケージ化時と通常実行時のパス解決を完全に統一
 if getattr(sys, 'frozen', False):
     # Macの .app 内の一時展開先（_MEIPASS）を最優先で取得
@@ -60,22 +63,44 @@ class MacCapturer(BaseCapturer):
     def initialize_devices(self):
         try:
             if os.path.exists(self.ios):
-                subprocess.run([self.ios, "list"], capture_output=True, timeout=3)
+                subprocess.run(
+                    [self.ios, "list"],
+                    capture_output=True,
+                    timeout=3,
+                    creationflags=CREATE_NO_WINDOW
+                )
         except:
             pass
         try:
             if os.path.exists(self.adb):
-                subprocess.run([self.adb, "devices"], capture_output=True, timeout=3)
+                subprocess.run(
+                    [self.adb, "devices"],
+                    capture_output=True,
+                    timeout=3,
+                    creationflags=CREATE_NO_WINDOW
+                )
         except:
             pass
 
     def get_current_device(self):
         try:
-            res = subprocess.run([self.ios, "list"], capture_output=True, text=True, timeout=2)
+            res = subprocess.run(
+                [self.ios, "list"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                creationflags=CREATE_NO_WINDOW
+            )
             if "0000" in res.stdout: return "ios"
         except: pass
         try:
-            res = subprocess.run([self.adb, "devices"], capture_output=True, text=True, timeout=2)
+            res = subprocess.run(
+                [self.adb, "devices"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                creationflags=CREATE_NO_WINDOW
+            )
             lines = res.stdout.strip().split('\n')
             if len(lines) > 1 and "device" in lines[1]: return "android"
         except: pass
@@ -91,6 +116,7 @@ class MacCapturer(BaseCapturer):
                 env=env,
                 capture_output=True,
                 text=True,
+                creationflags=CREATE_NO_WINDOW
             )
             if res.returncode != 0:
                 add_log(f"⚠️ iOS screenshot failed: {res.stderr.strip()}")
@@ -102,6 +128,7 @@ class MacCapturer(BaseCapturer):
                     [self.adb, "exec-out", "screencap", "-p"],
                     stdout=f,
                     stderr=subprocess.PIPE,
+                    creationflags=CREATE_NO_WINDOW
                 )
             if res.returncode != 0:
                 add_log(f"⚠️ Android screenshot failed: {res.stderr.decode().strip()}")
@@ -122,32 +149,72 @@ class WindowsCapturer(BaseCapturer):
     def _init_windows_firewall(self):
         try:
             if os.path.exists(self.adb):
-                subprocess.run([self.adb, "start-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-                subprocess.run([self.adb, "devices"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                subprocess.run(
+                    [self.adb, "start-server"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    creationflags=CREATE_NO_WINDOW
+                )
+                subprocess.run(
+                    [self.adb, "devices"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    creationflags=CREATE_NO_WINDOW
+                )
             if os.path.exists(self.ios):
-                subprocess.run([self.ios, "list"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                subprocess.run(
+                    [self.ios, "list"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    creationflags=CREATE_NO_WINDOW
+                )
         except Exception as e:
             print(f"Windows Firewall initialization failed: {e}")
     
     def initialize_devices(self):
         try:
             if os.path.exists(self.ios):
-                subprocess.run([self.ios, "list"], capture_output=True, timeout=3)
+                subprocess.run(
+                    [self.ios, "list"],
+                    capture_output=True,
+                    timeout=3,
+                    creationflags=CREATE_NO_WINDOW
+                )
         except:
             pass
         try:
             if os.path.exists(self.adb):
-                subprocess.run([self.adb, "devices"], capture_output=True, timeout=3)
+                subprocess.run(
+                    [self.adb, "devices"],
+                    capture_output=True,
+                    timeout=3,
+                    creationflags=CREATE_NO_WINDOW
+                )
         except:
             pass
 
     def get_current_device(self):
         try:
-            res = subprocess.run([self.ios, "list"], capture_output=True, text=True, timeout=2)
+            res = subprocess.run(
+                [self.ios, "list"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                creationflags=CREATE_NO_WINDOW
+            )
             if "0000" in res.stdout: return "ios"
         except: pass
         try:
-            res = subprocess.run([self.adb, "devices"], capture_output=True, text=True, timeout=2)
+            res = subprocess.run(
+                [self.adb, "devices"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                creationflags=CREATE_NO_WINDOW
+            )
             lines = res.stdout.strip().split('\n')
             if len(lines) > 1 and "device" in lines[1]: return "android"
         except: pass
@@ -161,6 +228,7 @@ class WindowsCapturer(BaseCapturer):
             res = subprocess.run(
                 [self.ios, "screenshot", f"--output={output_path}"],
                 env=env,
+                creationflags=CREATE_NO_WINDOW,
                 capture_output=True,
                 text=True,
             )
@@ -173,6 +241,7 @@ class WindowsCapturer(BaseCapturer):
                 res = subprocess.run(
                     [self.adb, "exec-out", "screencap", "-p"],
                     stdout=f,
+                    creationflags=CREATE_NO_WINDOW,
                     stderr=subprocess.PIPE,
                 )
             if res.returncode != 0:
@@ -484,6 +553,23 @@ def download_selected():
     )
 
 if __name__ == '__main__':
+    # 💡 既存のサーバー（ポート5001）が起動している場合は強制終了する
+    try:
+        if platform.system() == "Windows":
+            subprocess.run(
+                'cmd /c "for /f \"tokens=5\" %a in (\'netstat -aon ^| findstr 5001\') do taskkill /f /pid %a"',
+                shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW
+            )
+        else:
+            # Mac用のプロセス終了コマンド
+            subprocess.run(
+                "kill -9 $(lsof -t -i:5001)",
+                shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        time.sleep(0.5)  # ポートが解放されるのを少し待つ
+    except:
+        pass
+
     threading.Timer(0.5, lambda: webbrowser.open('http://127.0.0.1:5001')).start()
     add_log("🚀 OmniShot を起動中...")
     app.run(host='127.0.0.1', port=5001, debug=False, use_reloader=False, threaded=True)
