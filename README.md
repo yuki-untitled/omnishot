@@ -70,12 +70,13 @@ Windows環境のコマンドプロンプトまたは PowerShell で以下を実�
 rmdir /s /q build dist
 
 :: ビルドの実行
-python -m PyInstaller --onefile --windowed ^
-  --add-data "templates;templates" ^
-  --add-data "static;static" ^
-  --add-data "bin/win;bin/win" ^
-  --name "OmniShot" ^
-  --clean ^
+python -m PyInstaller --onefile --windowed `
+  --add-data "templates;templates" `
+  --add-data "static;static" `
+  --add-data "bin/win;bin/win" `
+  --name "OmniShot" `
+  --icon="static/favicon.ico" `
+  --clean `
   app.py
 ```
 ビルド完了後、`dist/OmniShot.exe` が生成されます。
