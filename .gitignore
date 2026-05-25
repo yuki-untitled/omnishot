@@ -1,4 +1,7 @@
 build/
 dist/
+*.spec
+.DS_Store
+__pycache__/
+*.pyc
 captures/
-OmniShot.spec
