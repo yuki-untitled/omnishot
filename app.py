@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import tempfile
 import urllib.request
 import webbrowser
 import zipfile
@@ -257,7 +258,7 @@ def auto_capture_loop():
         is_running = False
         return
 
-    add_log("▶️ 仕様厳密準拠・最新フレーム同期ループを開始しました")
+    add_log("▶️ 自動撮影を開始しました")
     stable_count = 0
     already_captured = False
     
@@ -295,7 +296,7 @@ def auto_capture_loop():
         # ==========================================
         if conf["mode"] == "static":
             if changed:
-                add_log(f"🎬 変化検知... 指定秒数待機中 ({conf['settling']}s)")
+                add_log(f"🎬 変化検知... 待機中 ({conf['settling']}s)")
                 if conf["settling"] > 0:
                     time.sleep(conf["settling"])
                 
@@ -307,7 +308,7 @@ def auto_capture_loop():
                     dest_path = os.path.join(SAVE_DIR, final_name)
                     
                     cv2.imwrite(dest_path, final_frame)
-                    add_log(f"📸 [静的] 保存完了: {final_name}")
+                    add_log(f"📸 撮影完了: {final_name}")
                     
                     # 撮影直後の状態を基準にする
                     last_frame_data = cv2.cvtColor(final_frame, cv2.COLOR_BGR2GRAY)
@@ -342,7 +343,7 @@ def auto_capture_loop():
                             dest_path = os.path.join(SAVE_DIR, final_name)
                             
                             cv2.imwrite(dest_path, frame)
-                            add_log(f"📸 【完全停止】撮影完了: {final_name}")
+                            add_log(f"📸 撮影完了: {final_name}")
                             
                             # 状態をロックし、カウントをクリア
                             already_captured = True
@@ -378,7 +379,7 @@ def start():
     if not is_running:
         is_running = True
         mode_text = "静的" if current_config["mode"] == "static" else "動的"
-        add_log(f"📋 モード: {mode_text} (ハイブリッド高速版)")
+        add_log(f"📋 モード: {mode_text}")
         threading.Thread(target=auto_capture_loop, daemon=True).start()
     return "Started"
 
@@ -393,16 +394,37 @@ def shutdown():
     global is_running
     is_running = False
     dev_manager.stop_stream()
-    add_log("🛑 サーバー終了リクエストを受信。一時データを削除してアプリを閉じます。")
+    
+    # 終了時の一般向けログ
+    add_log("🛑 システムを終了します。一時データを整理中...")
+    
     def kill_process():
         time.sleep(0.5)
         try:
+            # 1. 保存フォルダの削除
             if os.path.exists(SAVE_DIR):
                 shutil.rmtree(SAVE_DIR)
-                print("🧹 captures フォルダを正常に削除しました。")
-        except Exception as e: print(f"⚠️ Error: {e}")
+            
+            # 2. iOSキャッシュ（selfidentity.plist）の削除
+            home = os.path.expanduser("~")
+            plist_path = os.path.join(home, "Library/Preferences/com.apple.selfidentity.plist")
+            if os.path.exists(plist_path):
+                os.remove(plist_path)
+            
+            # 3. Windows一時ファイルの削除（該当する場合）
+            if platform.system() == "Windows":
+                tmp = tempfile.gettempdir()
+                for item in os.listdir(tmp):
+                    if "ios" in item or "adb" in item:
+                        shutil.rmtree(os.path.join(tmp, item), ignore_errors=True)
+            
+            print("🧹 終了処理が完了しました。")
+        except Exception as e: 
+            print(f"⚠️ クリーンアップ中にエラーが発生しました: {e}")
+        
         os._exit(0)
-    threading.Thread(target=kill_process).start()
+        
+    threading.Thread(target=kill_process, daemon=True).start()
     return "Shutdown"
 
 @app.route('/images')
@@ -420,7 +442,7 @@ def update_settings():
     current_config["settling"] = float(request.args.get('settling', 0.4))
     current_config["prefix"] = request.args.get('prefix', '')
     current_config["mode"] = request.args.get('mode', 'static')
-    print(f"Config updated: {current_config}")
+    add_log(f"📋 設定更新: {current_config}")
     return "Updated"
 
 @app.route('/logs/stream')
