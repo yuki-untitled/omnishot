@@ -14,11 +14,21 @@
             <p style="font-size: 14px; color: #bbb;">本アプリを使用するには、接続するスマートフォン側で以下の「開発者向け設定」を有効にする必要があります。</p>
             
             <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                <button id="tabAndroidBtn" class="btn start" style="flex: 1;">🤖 Android の設定</button>
-                <button id="tabIosBtn" class="btn" style="flex: 1; background: #555;">🍏 iPhone (iOS) の設定</button>
+                <button id="tabIosBtn" class="btn start" style="flex: 1;">🍏 iPhone (iOS) の設定</button>
+                <button id="tabAndroidBtn" class="btn" style="flex: 1; background: #555;">🤖 Android の設定</button>
             </div>
 
-            <div id="guideAndroid" style="font-size: 14px; line-height: 1.6;">
+            <div id="guideIos" style="font-size: 14px; line-height: 1.6;">
+                <ol style="padding-left: 20px;">
+                    <li>【Windowsの方のみ】<a href="https://www.apple.com/jp/itunes/" target="_blank" style="color: #3498db; text-decoration: underline; font-weight: bold;">iTunes</a>をインストールします</li>
+                    <li>iPhoneの<b>「設定」</b> ＞ <b>「プライバシーとセキュリティ」</b>を開く</li>
+                    <li>最下部にある<b>「デベロッパーモード」</b>を開き、<b>ON</b> にする</li>
+                    <li>端末を<b>再起動</b>し、ロック解除後に表示されるダイアログで<b>「オンにする」</b>をタップ</li>
+                    <li>USB接続時、画面に出る「このコンピュータを信頼しますか？」で<b>「信頼」</b>をタップ</li>
+                </ol>
+            </div>
+
+            <div id="guideAndroid" style="font-size: 14px; line-height: 1.6; display: none;">
                 <ol style="padding-left: 20px;">
                     <li>スマホの<b>「設定」</b> ＞ <b>「端末情報」</b>（またはシステム）を開く</li>
                     <li><b>「ビルド番号」</b>を <b>7回連続でタップ</b>する（パスコード入力を求められます）</li>
@@ -28,20 +38,11 @@
                 </ol>
             </div>
 
-            <div id="guideIos" style="font-size: 14px; line-height: 1.6; display: none;">
-                <ol style="padding-left: 20px;">
-                    <li>iPhoneの<b>「設定」</b> ＞ <b>「プライバシーとセキュリティ」</b>を開く</li>
-                    <li>最下部にある<b>「デベロッパーモード」</b>を開き、<b>ON</b> にする</li>
-                    <li>端末を<b>再起動</b>し、ロック解除後に表示されるダイアログで<b>「オンにする」</b>をタップ</li>
-                    <li>USB接続時、画面に出る「このコンピュータを信頼しますか？」で<b>「信頼」</b>をタップ</li>
-                </ol>
-            </div>
-
             <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0;">
             
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <label style="font-size: 13px; color: #888; cursor: pointer;">
-                    <input type="checkbox" id="skipGuideCheck"> 次回から表示しない
+                    <input type="checkbox" id="skipGuideCheck"> 次回から表示しない  
                 </label>
                 <button id="closeGuideBtn" class="btn start" style="padding: 8px 20px;">閉じる</button>
             </div>
@@ -59,13 +60,13 @@
         </div>
         
         <div class="controls" style="flex-wrap: nowrap; overflow-x: auto; justify-content: center;">
-            <label>チェック間隔: <input type="number" id="checkInterval" value="1.0" step="0.1">s</label>
+            <label>チェック間隔: <input type="number" id="checkInterval" value="0.5" step="0.1" min="0.1" max="30">s</label>
             
             <!-- 静的モード用コントロール -->
-            <label id="staticLabel" style="display: inline;">静止待ち時間: <input type="number" id="settlingTime" value="2.0" step="0.1">s</label>
+            <label id="staticLabel" style="display: inline;">静止待ち時間: <input type="number" id="settlingTime" value="1.0" step="0.1" min="0.1" max="30">s</label>
             
             <!-- 動的モード用コントロール -->
-            <label id="dynamicLabel" style="display: none;">判定回数: <input type="number" id="judgeCount" value="3" min="0" max="50">回</label>
+            <label id="dynamicLabel" style="display: none;">判定回数: <input type="number" id="judgeCount" value="3" min="1" max="10">回</label>
             
             <label>モード: <select id="modeSelect" style="padding: 8px; border-radius: 5px; border: 1px solid #333; background: #252525; color: white;">
                 <option value="static">静的モード</option>

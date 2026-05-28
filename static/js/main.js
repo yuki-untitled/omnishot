@@ -3,20 +3,25 @@ let logMessages = [];
 
 // --- ボタン操作 ---
 document.getElementById('startBtn').addEventListener('click', () => {
-    const interval = document.getElementById('checkInterval').value;
+    // 💡 各入力を取得し、HTMLの制限範囲内に丸める
+    let interval = parseFloat(document.getElementById('checkInterval').value) || 0.5;
+    interval = Math.max(0.1, Math.min(30, interval));
+    document.getElementById('checkInterval').value = interval;
+
+    let settling = parseFloat(document.getElementById('settlingTime').value) || 1.0;
+    settling = Math.max(0.1, Math.min(30, settling));
+    document.getElementById('settlingTime').value = settling;
+
+    let judgeCount = parseInt(document.getElementById('judgeCount').value) || 3;
+    judgeCount = Math.max(1, Math.min(10, judgeCount));
+    document.getElementById('judgeCount').value = judgeCount;
+
     const mode = document.getElementById('modeSelect').value;
     
-    let settling;
-    if (mode === 'static') {
-        settling = document.getElementById('settlingTime').value;
-    } else {
-        // 動的モード時は判定回数から秒数を計算
-        const judgeCount = document.getElementById('judgeCount').value;
-        settling = parseFloat(interval) * parseInt(judgeCount);
-    }
+    // 動的モード時は判定回数から秒数を計算してサーバーに送る
+    let finalSettling = mode === 'static' ? settling : interval * judgeCount;
 
-    // prefix入力欄を廃止したため、サーバーへは prefix を送らない
-    fetch(`/start?interval=${interval}&settling=${settling}&mode=${mode}`)
+    fetch(`/start?interval=${interval}&settling=${finalSettling}&mode=${mode}`)
         .then(() => {
             document.getElementById('status').innerText = "Status: Capturing...";
             document.getElementById('status').style.color = "#2ecc71";
@@ -292,18 +297,24 @@ function startLogStream() {
 
 // 設定が変更されたら即座にサーバーへ送る関数
 function sendSettings() {
-    const interval = document.getElementById('checkInterval').value;
+    // 💡 同様に制限範囲内に丸める
+    let interval = parseFloat(document.getElementById('checkInterval').value) || 0.5;
+    interval = Math.max(0.1, Math.min(30, interval));
+    document.getElementById('checkInterval').value = interval;
+
+    let settling = parseFloat(document.getElementById('settlingTime').value) || 1.0;
+    settling = Math.max(0.1, Math.min(30, settling));
+    document.getElementById('settlingTime').value = settling;
+
+    let judgeCount = parseInt(document.getElementById('judgeCount').value) || 3;
+    judgeCount = Math.max(1, Math.min(10, judgeCount));
+    document.getElementById('judgeCount').value = judgeCount;
+
     const mode = document.getElementById('modeSelect').value;
     
-    let settling;
-    if (mode === 'static') {
-        settling = document.getElementById('settlingTime').value;
-    } else {
-        const judgeCount = document.getElementById('judgeCount').value;
-        settling = parseFloat(interval) * parseInt(judgeCount);
-    }
+    let finalSettling = mode === 'static' ? settling : interval * judgeCount;
 
-    fetch(`/update_settings?interval=${interval}&settling=${settling}&mode=${mode}`);
+    fetch(`/update_settings?interval=${interval}&settling=${finalSettling}&mode=${mode}`);
 }
 
 // 各入力欄のイベント監視
@@ -465,16 +476,16 @@ function shutdownApp() {
 
 // タブ切り替え: Androidを選択した時
 tabAndroidBtn.addEventListener('click', () => {
-    tabAndroidBtn.style.background = '#2ecc71';
-    tabIosBtn.style.background = '#555'; 
+    tabAndroidBtn.style.background = '#2ecc71'; // Androidを緑に
+    tabIosBtn.style.background = '#555';       // iPhoneをグレーに
     guideAndroid.style.display = 'block';
     guideIos.style.display = 'none';
 });
 
 // タブ切り替え: iOSを選択した時
 tabIosBtn.addEventListener('click', () => {
-    tabAndroidBtn.style.background = '#555';
-    tabIosBtn.style.background = '#2ecc71';
+    tabAndroidBtn.style.background = '#555';       // Androidをグレーに
+    tabIosBtn.style.background = '#2ecc71'; // iPhoneを緑に
     guideAndroid.style.display = 'none';
     guideIos.style.display = 'block';
 });
