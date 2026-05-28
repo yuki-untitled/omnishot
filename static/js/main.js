@@ -1,45 +1,48 @@
+// ==========================================================================
+// 1. グローバル状態管理 & キャッシュ要素の定義
+// ==========================================================================
 let currentImagesJson = "";
 let logMessages = [];
-
-// --- ボタン操作 ---
-document.getElementById('startBtn').addEventListener('click', () => {
-    // 💡 各入力を取得し、HTMLの制限範囲内に丸める
-    let interval = parseFloat(document.getElementById('checkInterval').value) || 0.5;
-    interval = Math.max(0.1, Math.min(30, interval));
-    document.getElementById('checkInterval').value = interval;
-
-    let settling = parseFloat(document.getElementById('settlingTime').value) || 1.0;
-    settling = Math.max(0.1, Math.min(30, settling));
-    document.getElementById('settlingTime').value = settling;
-
-    let judgeCount = parseInt(document.getElementById('judgeCount').value) || 3;
-    judgeCount = Math.max(1, Math.min(10, judgeCount));
-    document.getElementById('judgeCount').value = judgeCount;
-
-    const mode = document.getElementById('modeSelect').value;
-    
-    // 動的モード時は判定回数から秒数を計算してサーバーに送る
-    let finalSettling = mode === 'static' ? settling : interval * judgeCount;
-
-    fetch(`/start?interval=${interval}&settling=${finalSettling}&mode=${mode}`)
-        .then(() => {
-            document.getElementById('status').innerText = "Status: Capturing...";
-            document.getElementById('status').style.color = "#2ecc71";
-        });
-});
-
-document.getElementById('stopBtn').addEventListener('click', () => {
-    fetch('/stop')
-        .then(() => {
-            document.getElementById('status').innerText = "Status: Idle";
-            document.getElementById('status').style.color = "#888";
-        });
-});
-
 let selectedFiles = new Set();
 let allImages = [];
 let currentPreviewIndex = 0;
 let displayNames = {};
+
+// DOM要素をキャッシュ（高速化のため一度だけ取得）
+const elStartBtn = document.getElementById('startBtn');
+const elStopBtn = document.getElementById('stopBtn');
+const elCheckInterval = document.getElementById('checkInterval');
+const elSettlingTime = document.getElementById('settlingTime');
+const elJudgeCount = document.getElementById('judgeCount');
+const elModeSelect = document.getElementById('modeSelect');
+const elSortSelect = document.getElementById('sortSelect');
+const elStatus = document.getElementById('status');
+const elGallery = document.getElementById('gallery');
+const elLogConsole = document.getElementById('logConsole');
+
+const elPreviewModal = document.getElementById('previewModal');
+const elPreviewImage = document.getElementById('previewImage');
+const elPreviewInfo = document.getElementById('previewInfo');
+const elCloseModalBtn = document.getElementById('closeModalBtn');
+const elPrevBtn = document.getElementById('prevBtn');
+const elNextBtn = document.getElementById('nextBtn');
+
+const elDeselectAllBtn = document.getElementById('deselectAllBtn');
+const elDeleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+const elDownloadBtn = document.getElementById('downloadBtn');
+const elSelectCount = document.getElementById('selectCount');
+const elDownloadCount = document.getElementById('downloadCount');
+
+const elGuideModal = document.getElementById('guideModal');
+const elTabAndroidBtn = document.getElementById('tabAndroidBtn');
+const elTabIosBtn = document.getElementById('tabIosBtn');
+const elGuideAndroid = document.getElementById('guideAndroid');
+const elGuideIos = document.getElementById('guideIos');
+const elSkipGuideCheck = document.getElementById('skipGuideCheck');
+const elCloseGuideBtn = document.getElementById('closeGuideBtn');
+const elOpenGuideBtn = document.getElementById('openGuideBtn');
+
+// LocalStorage から表示名マップを読み込み
 try {
     const stored = localStorage.getItem('displayNames');
     if (stored) displayNames = JSON.parse(stored);
@@ -47,46 +50,103 @@ try {
     console.warn('Failed to load displayNames from localStorage', e);
 }
 
-// ギャラリー更新ロジック
+
+// ==========================================================================
+// 2. ギャラリー & UI 制御関数
+// ==========================================================================
+
+// ギャラリー更新ロジック（定期ポーリング）
 function updateGallery() {
     fetch('/images')
         .then(res => res.json())
         .then(data => {
-            // 💡 サーバーから届いたデータを、選択されている並び順にソートする
-            const sortOrder = document.getElementById('sortSelect').value;
-            data.sort((a, b) => {
-                return sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b);
-            });
-
             const newJson = JSON.stringify(data);
+            
+            // 💡 サーバーデータに変化があった場合のみ並び替えと再描画を実行（軽量化・パタつき防止）
             if (currentImagesJson === "" || newJson !== currentImagesJson) {
                 currentImagesJson = newJson;
                 allImages = data;
-
-                const gallery = document.getElementById('gallery');
-                if (gallery) {
-                    gallery.innerHTML = data.map(img => {
-                        const displayName = displayNames[img] || img.replace(/\.png$/i, '');
-                        
-                        return `
-                            <div class="card ${selectedFiles.has(img) ? 'selected' : ''}" data-filename="${img}">
-                                <input type="checkbox" class="select-checkbox" 
-                                    ${selectedFiles.has(img) ? 'checked' : ''} 
-                                    onclick="toggleSelect('${img}')">
-                                <img src="/static/captures/${img}?t=${new Date().getTime()}" onclick="openPreview('${img}')" style="cursor: pointer;">
-                                <div class="card-info">
-                                    <span class="display-name" data-filename="${img}">${escapeHtml(displayName)}</span>
-                                </div>
-                            </div>
-                        `;
-                    }).join('');
-                }
+                refreshGalleryUI();
             }
             setTimeout(updateGallery, 1500);
+        })
+        .catch(err => {
+            console.error("Gallery update error:", err);
+            setTimeout(updateGallery, 3000); // エラー時は少し間隔を空けてリトライ
         });
 }
 
-// プレビューモーダル関連
+// ギャラリーUIの生成・描画
+function refreshGalleryUI() {
+    if (!elGallery) return;
+
+    // 現在の選択順に応じてソートを適用
+    const sortOrder = elSortSelect.value;
+    allImages.sort((a, b) => {
+        return sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b);
+    });
+
+    const timestamp = new Date().getTime();
+    elGallery.innerHTML = allImages.map(img => {
+        const displayName = displayNames[img] || img.replace(/\.png$/i, '');
+        const isSelected = selectedFiles.has(img);
+        
+        return `
+            <div class="card ${isSelected ? 'selected' : ''}" data-filename="${img}">
+                <input type="checkbox" class="select-checkbox" 
+                    ${isSelected ? 'checked' : ''} 
+                    onclick="toggleSelect('${img}')">
+                <img src="/static/captures/${img}?t=${timestamp}" onclick="openPreview('${img}')" style="cursor: pointer;">
+                <div class="card-info">
+                    <span class="display-name" data-filename="${img}">${escapeHtml(displayName)}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// 選択状態の切り替え
+window.toggleSelect = function(filename) {
+    if (selectedFiles.has(filename)) {
+        selectedFiles.delete(filename);
+    } else {
+        selectedFiles.add(filename);
+    }
+    updateUI();
+};
+
+// 共通アクションボタンの表示/非表示状態更新
+function updateUI() {
+    const count = selectedFiles.size;
+    
+    if (elSelectCount) elSelectCount.innerText = count;
+    if (elDownloadCount) elDownloadCount.innerText = count;
+    
+    const displayStyle = count > 0 ? 'inline-block' : 'none';
+    if (elDeselectAllBtn) elDeselectAllBtn.style.display = displayStyle;
+    if (elDeleteSelectedBtn) elDeleteSelectedBtn.style.display = displayStyle;
+    if (elDownloadBtn) elDownloadBtn.style.display = displayStyle;
+}
+
+// モード選択に連動した設定欄のトグル制御
+function updateModeDisplay() {
+    const mode = elModeSelect.value;
+    const staticLabel = document.getElementById('staticLabel');
+    const dynamicLabel = document.getElementById('dynamicLabel');
+    
+    if (mode === 'static') {
+        if (staticLabel) staticLabel.style.display = 'inline';
+        if (dynamicLabel) dynamicLabel.style.display = 'none';
+    } else {
+        if (staticLabel) staticLabel.style.display = 'none';
+        if (dynamicLabel) dynamicLabel.style.display = 'inline';
+    }
+}
+
+
+// ==========================================================================
+// 3. プレビューモーダル制御
+// ==========================================================================
 function openPreview(filename) {
     currentPreviewIndex = allImages.indexOf(filename);
     showPreview();
@@ -96,17 +156,13 @@ function showPreview() {
     if (allImages.length === 0) return;
     
     const img = allImages[currentPreviewIndex];
-    const modal = document.getElementById('previewModal');
-    const previewImg = document.getElementById('previewImage');
-    const previewInfo = document.getElementById('previewInfo');
-    
-    previewImg.src = `/static/captures/${img}?t=${new Date().getTime()}`;
-    previewInfo.innerText = `${currentPreviewIndex + 1} / ${allImages.length} - ${img}`;
-    modal.style.display = 'flex';
+    if (elPreviewImage) elPreviewImage.src = `/static/captures/${img}?t=${new Date().getTime()}`;
+    if (elPreviewInfo) elPreviewInfo.innerText = `${currentPreviewIndex + 1} / ${allImages.length} - ${img}`;
+    if (elPreviewModal) elPreviewModal.style.display = 'flex';
 }
 
 function closePreview() {
-    document.getElementById('previewModal').style.display = 'none';
+    if (elPreviewModal) elPreviewModal.style.display = 'none';
 }
 
 function prevImage() {
@@ -123,236 +179,38 @@ function nextImage() {
     }
 }
 
-// モーダルボタンイベント
-document.getElementById('closeModalBtn').addEventListener('click', closePreview);
-document.getElementById('prevBtn').addEventListener('click', prevImage);
-document.getElementById('nextBtn').addEventListener('click', nextImage);
 
-// ESCキーで閉じる
-document.addEventListener('keydown', (e) => {
-    const modal = document.getElementById('previewModal');
-    if (modal.style.display === 'flex') {
-        if (e.key === 'Escape') closePreview();
-        if (e.key === 'ArrowLeft') prevImage();
-        if (e.key === 'ArrowRight') nextImage();
-    }
-});
-
-// モーダル背景クリックで閉じる
-document.getElementById('previewModal').addEventListener('click', (e) => {
-    if (e.target.id === 'previewModal') closePreview();
-});
-
-// 選択状態の切り替え
-window.toggleSelect = function(filename) {
-    if (selectedFiles.has(filename)) {
-        selectedFiles.delete(filename);
-    } else {
-        selectedFiles.add(filename);
-    }
-    updateUI();
-};
-
-// 共通のUI更新関数
-function updateUI() {
-    const count = selectedFiles.size;
-    
-    const deselectBtn = document.getElementById('deselectAllBtn');
-    const delBtn = document.getElementById('deleteSelectedBtn');
-    const dlBtn = document.getElementById('downloadBtn');
-    
-    document.getElementById('selectCount').innerText = count;
-    document.getElementById('downloadCount').innerText = count;
-    
-    const display = count > 0 ? 'inline-block' : 'none';
-    deselectBtn.style.display = display;
-    delBtn.style.display = display;
-    dlBtn.style.display = display;
-}
-
-// 全選択ボタン
-document.getElementById('selectAllBtn').addEventListener('click', () => {
-    if (allImages.length === 0) return;
-    
-    allImages.forEach(img => selectedFiles.add(img));
-    updateUI();
-    refreshGalleryUI();
-});
-
-// 選択解除ボタン
-document.getElementById('deselectAllBtn').addEventListener('click', () => {
-    selectedFiles.clear();
-    updateUI();
-    refreshGalleryUI();
-});
-
-// ギャラリーUI更新関数
-function refreshGalleryUI() {
-    const gallery = document.getElementById('gallery');
-    if (!gallery) return;
-
-    // 💡 全選択解除などの際にも、現在の並び順を維持して再描画する
-    const sortOrder = document.getElementById('sortSelect').value;
-    allImages.sort((a, b) => {
-        return sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b);
-    });
-
-    gallery.innerHTML = allImages.map(img => {
-        const displayName = displayNames[img] || img.replace(/\.png$/i, '');
-
-        return `
-            <div class="card ${selectedFiles.has(img) ? 'selected' : ''}" data-filename="${img}">
-                <input type="checkbox" class="select-checkbox" 
-                    ${selectedFiles.has(img) ? 'checked' : ''} 
-                    onclick="toggleSelect('${img}')">
-                <img src="/static/captures/${img}?t=${new Date().getTime()}" onclick="openPreview('${img}')" style="cursor: pointer;">
-                <div class="card-info">
-                    <span class="display-name" data-filename="${img}">${escapeHtml(displayName)}</span>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
-// 選択削除ボタン
-document.getElementById('deleteSelectedBtn').addEventListener('click', () => {
-    if (selectedFiles.size === 0) return;
-    
-    const message = selectedFiles.size === allImages.length 
-        ? `${selectedFiles.size}件の全ての画像を削除しますか？`
-        : `${selectedFiles.size}件の画像を削除しますか？`;
-    
-    if (confirm(message)) {
-        fetch('/delete_selected', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filenames: Array.from(selectedFiles) })
-        }).then(() => {
-            selectedFiles.clear();
-            updateUI();
-        });
-    }
-});
-
-// ダウンロードボタンのイベント
-document.getElementById('downloadBtn').addEventListener('click', () => {
-    if (selectedFiles.size === 0) return;
-
-    // 💡 現在の日時から「YYYYMMDD_HHMMSS」のフォーマットを作成
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const date = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    
-    // 💡 デフォルトのZIPファイル名を「manual_assets_日付_時間」にする
-    const defaultName = `OmniShot_${year}${month}${date}_${hours}${minutes}${seconds}`;
-    
-    const inputName = prompt('保存するZIPファイル名を入力してください（拡張子 .zip は不要）', defaultName);
-    if (inputName === null) return; // キャンセル時は中断
-    const zipFilename = inputName.trim() === '' ? defaultName + '.zip' : (inputName.endsWith('.zip') ? inputName : inputName + '.zip');
-
-    // 選択ファイルを内部ファイル名の降順でソートし、新しい順でZIPに含める
-    const selectedArray = Array.from(selectedFiles).sort((a, b) => b.localeCompare(a, undefined, { numeric: true, sensitivity: 'base' }));
-    const nameMap = selectedArray.map(file => {
-        const displayBase = displayNames[file] ? displayNames[file].replace(/\.png$/i, '') : file.replace(/\.png$/i, '');
-        return { file, outputName: `${displayBase}.png` };
-    });
-
-    fetch('/download_selected', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filenames: selectedArray, zipName: zipFilename, nameMap })
-    })
-    .then(res => res.blob())
-    .then(blob => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = zipFilename;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-    })
-    .catch(err => console.error("Download error:", err));
-});
-
-// --- ログストリーム ---
-function appendLog(message) {
-    logMessages.push(message);
-    if (logMessages.length > 50) {
-        logMessages.shift();
-    }
-    const logConsole = document.getElementById('logConsole');
-    if (logConsole) {
-        logConsole.innerHTML = logMessages.slice().reverse().map(msg => `<div>${msg}</div>`).join('');
-    }
-}
-
-function startLogStream() {
-    const source = new EventSource('/logs/stream');
-    source.onmessage = (event) => {
-        appendLog(event.data);
-        if (event.data.includes('保存完了') || event.data.includes('撮影完了')) {
-            updateGallery();
-        }
-    };
-    source.onerror = () => {
-        // ブラウザのEventSourceは自動リコネクトするので、ここでは特に何もしない。
-        console.warn('Log stream disconnected; retrying...');
-    };
-}
-
-// 設定が変更されたら即座にサーバーへ送る関数
-function sendSettings() {
-    // 💡 同様に制限範囲内に丸める
-    let interval = parseFloat(document.getElementById('checkInterval').value) || 0.5;
+// ==========================================================================
+// 4. 数値ガード & サーバー同期
+// ==========================================================================
+function getClampedSettings() {
+    let interval = parseFloat(elCheckInterval.value) || 0.5;
     interval = Math.max(0.1, Math.min(30, interval));
-    document.getElementById('checkInterval').value = interval;
+    elCheckInterval.value = interval;
 
-    let settling = parseFloat(document.getElementById('settlingTime').value) || 1.0;
+    let settling = parseFloat(elSettlingTime.value) || 1.0;
     settling = Math.max(0.1, Math.min(30, settling));
-    document.getElementById('settlingTime').value = settling;
+    elSettlingTime.value = settling;
 
-    let judgeCount = parseInt(document.getElementById('judgeCount').value) || 3;
+    let judgeCount = parseInt(elJudgeCount.value) || 3;
     judgeCount = Math.max(1, Math.min(10, judgeCount));
-    document.getElementById('judgeCount').value = judgeCount;
+    elJudgeCount.value = judgeCount;
 
-    const mode = document.getElementById('modeSelect').value;
-    
-    let finalSettling = mode === 'static' ? settling : interval * judgeCount;
+    const mode = elModeSelect.value;
+    const finalSettling = mode === 'static' ? settling : interval * judgeCount;
 
+    return { interval, finalSettling, mode };
+}
+
+function sendSettings() {
+    const { interval, finalSettling, mode } = getClampedSettings();
     fetch(`/update_settings?interval=${interval}&settling=${finalSettling}&mode=${mode}`);
 }
 
-// 各入力欄のイベント監視
-document.getElementById('checkInterval').addEventListener('input', sendSettings);
-document.getElementById('settlingTime').addEventListener('input', sendSettings);
-document.getElementById('judgeCount').addEventListener('input', sendSettings);
-document.getElementById('modeSelect').addEventListener('change', () => {
-    updateModeDisplay();
-    sendSettings();
-});
 
-// モード変更時の表示切り替え
-function updateModeDisplay() {
-    const mode = document.getElementById('modeSelect').value;
-    const staticLabel = document.getElementById('staticLabel');
-    const dynamicLabel = document.getElementById('dynamicLabel');
-    
-    if (mode === 'static') {
-        if (staticLabel) staticLabel.style.display = 'inline';
-        if (dynamicLabel) dynamicLabel.style.display = 'none';
-    } else {
-        if (staticLabel) staticLabel.style.display = 'none';
-        if (dynamicLabel) dynamicLabel.style.display = 'inline';
-    }
-}
-
-// クリックで表示名を編集できるようにする（イベントデリゲーション）
+// ==========================================================================
+// 5. 表示名の動的編集（イベントデリゲーション）
+// ==========================================================================
 document.addEventListener('click', (e) => {
     const target = e.target;
     if (target && target.classList && target.classList.contains('display-name')) {
@@ -366,7 +224,6 @@ function startEditDisplayName(spanEl, filename) {
     input.type = 'text';
     input.className = 'edit-name-input';
     
-    // 現在の表示名（拡張子なし）を初期値にする
     const currentBase = (displayNames[filename] || filename).replace(/\.png$/i, '');
     input.value = currentBase;
     input.style.width = '100%';
@@ -389,10 +246,7 @@ function startEditDisplayName(spanEl, filename) {
             const oldDisplay = displayNames[filename] || filename.replace(/\.png$/i, '');
 
             if (!userInput) {
-                // 空白（空欄）にされた場合は表示名マップから消去
                 delete displayNames[filename];
-                
-                // 💡 サーバーにリセットログを通知
                 fetch('/rename', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -400,17 +254,11 @@ function startEditDisplayName(spanEl, filename) {
                 });
             } else {
                 const cleanInputBase = userInput.replace(/\.png$/i, '');
-                
-                // 変更がなければ何もしない
                 if (cleanInputBase === currentBase) {
                     revertSpan();
                     return;
                 }
-                
-                // 表示名マップに保存
                 displayNames[filename] = cleanInputBase;
-
-                // 💡 サーバーに変更ログを通知
                 fetch('/rename', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -418,10 +266,7 @@ function startEditDisplayName(spanEl, filename) {
                 });
             }
 
-            // ローカルストレージに保存
             try { localStorage.setItem('displayNames', JSON.stringify(displayNames)); } catch(e){}
-
-            // UIを即座にリフレッシュ
             refreshGalleryUI();
         } else {
             revertSpan();
@@ -453,67 +298,207 @@ function startEditDisplayName(spanEl, filename) {
     });
 }
 
-// --- 初回セットアップガイドの制御 ---
-const guideModal = document.getElementById('guideModal');
-const tabAndroidBtn = document.getElementById('tabAndroidBtn');
-const tabIosBtn = document.getElementById('tabIosBtn');
-const guideAndroid = document.getElementById('guideAndroid');
-const guideIos = document.getElementById('guideIos');
 
-// アプリ起動時に「非表示フラグ」がなければモーダルを出す
-window.addEventListener('DOMContentLoaded', () => {
-    const isSkipped = localStorage.getItem('skipSetupGuide');
-    if (!isSkipped) {
-        if (guideModal) guideModal.style.display = 'flex';
+// ==========================================================================
+// 6. Live Logs & サーバー通信ストリーム
+// ==========================================================================
+function appendLog(message) {
+    logMessages.push(message);
+    if (logMessages.length > 50) {
+        logMessages.shift();
     }
-});
-
-// 【追加】ヘッダー右端の「❓ 設定ガイド」ボタンを押したときの処理
-document.getElementById('openGuideBtn').addEventListener('click', () => {
-    if (guideModal) guideModal.style.display = 'flex';
-});
-
-// アプリ終了ボタンの処理
-function shutdownApp() {
-    if (confirm("アプリケーションを終了しますか？\n（サーバーが停止し、この画面は使えなくなります）")) {
-        fetch('/shutdown', { method: 'POST' })
-            .then(response => {
-                alert("アプリケーションを終了しました。このタブを閉じてもらって大丈夫です。");
-                window.close(); // ブラウザのタブを閉じる試み
-            })
-            .catch(err => console.error("Shutdown error:", err));
+    if (elLogConsole) {
+        elLogConsole.innerHTML = logMessages.slice().reverse().map(msg => `<div>${msg}</div>`).join('');
     }
 }
 
-// タブ切り替え: Androidを選択した時
-tabAndroidBtn.addEventListener('click', () => {
-    tabAndroidBtn.style.background = '#2ecc71'; // Androidを緑に
-    tabIosBtn.style.background = '#555';       // iPhoneをグレーに
-    guideAndroid.style.display = 'block';
-    guideIos.style.display = 'none';
+function startLogStream() {
+    const source = new EventSource('/logs/stream');
+    source.onmessage = (event) => {
+        appendLog(event.data);
+        if (event.data.includes('保存完了') || event.data.includes('撮影完了')) {
+            updateGallery();
+        }
+    };
+    source.onerror = () => {
+        console.warn('Log stream disconnected; retrying...');
+    };
+}
+
+
+// ==========================================================================
+// 7. 各種イベントリスナーの設定
+// ==========================================================================
+
+// 自動撮影コントロール系
+elStartBtn.addEventListener('click', () => {
+    const { interval, finalSettling, mode } = getClampedSettings();
+    fetch(`/start?interval=${interval}&settling=${finalSettling}&mode=${mode}`)
+        .then(() => {
+            elStatus.innerText = "Status: Capturing...";
+            elStatus.style.color = "#2ecc71";
+        });
 });
 
-// タブ切り替え: iOSを選択した時
-tabIosBtn.addEventListener('click', () => {
-    tabAndroidBtn.style.background = '#555';       // Androidをグレーに
-    tabIosBtn.style.background = '#2ecc71'; // iPhoneを緑に
-    guideAndroid.style.display = 'none';
-    guideIos.style.display = 'block';
+elStopBtn.addEventListener('click', () => {
+    fetch('/stop')
+        .then(() => {
+            elStatus.innerText = "Status: Idle";
+            elStatus.style.color = "#888";
+        });
 });
 
-// 閉じるボタン（チェックが付いていたらローカルストレージに保存）
-document.getElementById('closeGuideBtn').addEventListener('click', () => {
-    if (document.getElementById('skipGuideCheck').checked) {
-        localStorage.setItem('skipSetupGuide', 'true');
-    }
-    guideModal.style.display = 'none';
+// 各設定入力欄のリアルタイム同期
+elCheckInterval.addEventListener('input', sendSettings);
+elSettlingTime.addEventListener('input', sendSettings);
+elJudgeCount.addEventListener('input', sendSettings);
+elModeSelect.addEventListener('change', () => {
+    updateModeDisplay();
+    sendSettings();
 });
 
-// 💡 並び替えが変更されたらUIを即リフレッシュ
-document.getElementById('sortSelect').addEventListener('change', () => {
+// ギャラリーの全選択・解除・ソート
+document.getElementById('selectAllBtn').addEventListener('click', () => {
+    if (allImages.length === 0) return;
+    allImages.forEach(img => selectedFiles.add(img));
+    updateUI();
     refreshGalleryUI();
 });
 
+elDeselectAllBtn.addEventListener('click', () => {
+    selectedFiles.clear();
+    updateUI();
+    refreshGalleryUI();
+});
+
+elSortSelect.addEventListener('change', () => {
+    refreshGalleryUI();
+});
+
+// 選択アイテムの削除・ダウンロード
+elDeleteSelectedBtn.addEventListener('click', () => {
+    if (selectedFiles.size === 0) return;
+    const message = selectedFiles.size === allImages.length 
+        ? `${selectedFiles.size}件の全ての画像を削除しますか？`
+        : `${selectedFiles.size}件の画像を削除しますか？`;
+    
+    if (confirm(message)) {
+        fetch('/delete_selected', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filenames: Array.from(selectedFiles) })
+        }).then(() => {
+            selectedFiles.clear();
+            updateUI();
+        });
+    }
+});
+
+elDownloadBtn.addEventListener('click', () => {
+    if (selectedFiles.size === 0) return;
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const date = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    
+    const defaultName = `OmniShot_${year}${month}${date}_${hours}${minutes}${seconds}`;
+    const inputName = prompt('保存するZIPファイル名を入力してください（拡張子 .zip は不要）', defaultName);
+    if (inputName === null) return;
+    
+    const zipFilename = inputName.trim() === '' ? defaultName + '.zip' : (inputName.endsWith('.zip') ? inputName : inputName + '.zip');
+
+    const selectedArray = Array.from(selectedFiles).sort((a, b) => b.localeCompare(a, undefined, { numeric: true, sensitivity: 'base' }));
+    const nameMap = selectedArray.map(file => {
+        const displayBase = displayNames[file] ? displayNames[file].replace(/\.png$/i, '') : file.replace(/\.png$/i, '');
+        return { file, outputName: `${displayBase}.png` };
+    });
+
+    fetch('/download_selected', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filenames: selectedArray, zipName: zipFilename, nameMap })
+    })
+    .then(res => res.blob())
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = zipFilename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+    })
+    .catch(err => console.error("Download error:", err));
+});
+
+// モーダル操作ボタン関係
+elCloseModalBtn.addEventListener('click', closePreview);
+elPrevBtn.addEventListener('click', prevImage);
+elNextBtn.addEventListener('click', nextImage);
+
+elPreviewModal.addEventListener('click', (e) => {
+    if (e.target.id === 'previewModal') closePreview();
+});
+
+// キーボード操作（ESC / 左右矢印キー）
+document.addEventListener('keydown', (e) => {
+    if (elPreviewModal.style.display === 'flex') {
+        if (e.key === 'Escape') closePreview();
+        if (e.key === 'ArrowLeft') prevImage();
+        if (e.key === 'ArrowRight') nextImage();
+    }
+});
+
+// セットアップガイドの制御関係
+window.addEventListener('DOMContentLoaded', () => {
+    if (!localStorage.getItem('skipSetupGuide') && elGuideModal) {
+        elGuideModal.style.display = 'flex';
+    }
+});
+
+elOpenGuideBtn.addEventListener('click', () => {
+    if (elGuideModal) elGuideModal.style.display = 'flex';
+});
+
+elTabAndroidBtn.addEventListener('click', () => {
+    elTabAndroidBtn.style.background = '#2ecc71';
+    elTabIosBtn.style.background = '#555';
+    elGuideAndroid.style.display = 'block';
+    elGuideIos.style.display = 'none';
+});
+
+elTabIosBtn.addEventListener('click', () => {
+    elTabAndroidBtn.style.background = '#555';
+    elTabIosBtn.style.background = '#2ecc71';
+    elGuideAndroid.style.display = 'none';
+    elGuideIos.style.display = 'block';
+});
+
+elCloseGuideBtn.addEventListener('click', () => {
+    if (elSkipGuideCheck.checked) {
+        localStorage.setItem('skipSetupGuide', 'true');
+    }
+    elGuideModal.style.display = 'none';
+});
+
+// アプリ終了ボタン
+window.shutdownApp = function() {
+    if (confirm("アプリケーションを終了しますか？\n（サーバーが停止し、この画面は使えなくなります）")) {
+        fetch('/shutdown', { method: 'POST' })
+            .then(() => {
+                alert("アプリケーションを終了しました。このタブを閉じてもらって大丈夫です。");
+                window.close();
+            })
+            .catch(err => console.error("Shutdown error:", err));
+    }
+};
+
+// HTMLエスケープヘルパー
 function escapeHtml(str) {
     if (!str) return '';
     return str
@@ -524,7 +509,10 @@ function escapeHtml(str) {
         .replace(/'/g, "&#039;");
 }
 
-// 初期化実行
+
+// ==========================================================================
+// 8. システム初期化
+// ==========================================================================
 updateModeDisplay();
 updateGallery();
 startLogStream();

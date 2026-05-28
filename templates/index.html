@@ -8,9 +8,10 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <div id="guideModal" class="preview-modal" style="display:none; z-index: 2000;">
+
+    <div id="guideModal" class="preview-modal" style="display: none; z-index: 2000;">
         <div class="preview-content" style="background: #1a1a1a; padding: 25px; border-radius: 12px; max-width: 600px; width: 90%; border: 1px solid #333;">
-            <h2 style="margin-top:0; color: #2ecc71; border-bottom: 2px solid #2ecc71; padding-bottom: 10px;">🚀 初回セットアップガイド</h2>
+            <h2 style="margin-top: 0; color: #2ecc71; border-bottom: 2px solid #2ecc71; padding-bottom: 10px;">🚀 初回セットアップガイド</h2>
             <p style="font-size: 14px; color: #bbb;">本アプリを使用するには、接続するスマートフォン側で以下の「開発者向け設定」を有効にする必要があります。</p>
             
             <div style="display: flex; gap: 10px; margin-bottom: 15px;">
@@ -48,6 +49,8 @@
             </div>
         </div>
     </div>
+
+
     <div class="header">
         <div class="header-top">
             <h1>📱 OmniShot</h1>
@@ -62,16 +65,17 @@
         <div class="controls" style="flex-wrap: nowrap; overflow-x: auto; justify-content: center;">
             <label>チェック間隔: <input type="number" id="checkInterval" value="0.5" step="0.1" min="0.1" max="30">s</label>
             
-            <!-- 静的モード用コントロール -->
             <label id="staticLabel" style="display: inline;">静止待ち時間: <input type="number" id="settlingTime" value="1.0" step="0.1" min="0.1" max="30">s</label>
             
-            <!-- 動的モード用コントロール -->
             <label id="dynamicLabel" style="display: none;">判定回数: <input type="number" id="judgeCount" value="3" min="1" max="10">回</label>
             
-            <label>モード: <select id="modeSelect" style="padding: 8px; border-radius: 5px; border: 1px solid #333; background: #252525; color: white;">
-                <option value="static">静的モード</option>
-                <option value="dynamic">動的モード</option>
-            </select></label>
+            <label>モード: 
+                <select id="modeSelect" style="padding: 8px; border-radius: 5px; border: 1px solid #333; background: #252525; color: white;">
+                    <option value="static">静的モード</option>
+                    <option value="dynamic">動的モード</option>
+                </select>
+            </label>
+            
             <button id="startBtn" class="btn start">自動撮影開始</button>
             <button id="stopBtn" class="btn stop">停止</button>
             <span id="status" style="min-width: 150px; white-space: nowrap;">Status: Idle</span>
@@ -80,9 +84,9 @@
         <div class="controls" style="flex-wrap: nowrap; overflow-x: auto; justify-content: space-between; align-items: center; width: 100%;">
             <div style="display: flex; gap: 10px;">
                 <button id="selectAllBtn" class="btn" style="background: #3498db;">全選択</button>
-                <button id="deselectAllBtn" class="btn" style="background: #999; display:none;">選択解除</button>
-                <button id="deleteSelectedBtn" class="btn stop" style="display:none;">消去 (<span id="selectCount">0</span>)</button>
-                <button id="downloadBtn" class="btn start" style="display:none; background: #3498db;">ダウンロード (<span id="downloadCount">0</span>)</button>
+                <button id="deselectAllBtn" class="btn" style="background: #999; display: none;">選択解除</button>
+                <button id="deleteSelectedBtn" class="btn stop" style="display: none;">消去 (<span id="selectCount">0</span>)</button>
+                <button id="downloadBtn" class="btn start" style="display: none; background: #3498db;">ダウンロード (<span id="downloadCount">0</span>)</button>
             </div>
 
             <div style="margin-left: auto;">
@@ -103,8 +107,8 @@
     
     <div id="gallery" class="gallery"></div>
 
-    <!-- モーダル -->
-    <div id="previewModal" class="preview-modal" style="display:none;">
+
+    <div id="previewModal" class="preview-modal" style="display: none;">
         <div class="preview-content">
             <button id="closeModalBtn" class="close-modal">&times;</button>
             <button id="prevBtn" class="nav-btn prev-btn">&#10094;</button>
