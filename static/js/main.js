@@ -47,16 +47,20 @@ function updateGallery() {
     fetch('/images')
         .then(res => res.json())
         .then(data => {
+            // 💡 サーバーから届いたデータを、選択されている並び順にソートする
+            const sortOrder = document.getElementById('sortSelect').value;
+            data.sort((a, b) => {
+                return sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b);
+            });
+
             const newJson = JSON.stringify(data);
-            // 💡 初回（currentImagesJson が空）か、データに変更があった場合のみ描画する
             if (currentImagesJson === "" || newJson !== currentImagesJson) {
                 currentImagesJson = newJson;
-                allImages = data; // プレビュー用に保存
+                allImages = data;
 
                 const gallery = document.getElementById('gallery');
-                if (gallery) { // 💡 要素の存在チェックを追加して安全にする
+                if (gallery) {
                     gallery.innerHTML = data.map(img => {
-                        // もしLocalStorageに変更後の名前があればそれを使い、なければ元のファイル名（拡張子なし）を表示する
                         const displayName = displayNames[img] || img.replace(/\.png$/i, '');
                         
                         return `
@@ -182,8 +186,13 @@ function refreshGalleryUI() {
     const gallery = document.getElementById('gallery');
     if (!gallery) return;
 
+    // 💡 全選択解除などの際にも、現在の並び順を維持して再描画する
+    const sortOrder = document.getElementById('sortSelect').value;
+    allImages.sort((a, b) => {
+        return sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b);
+    });
+
     gallery.innerHTML = allImages.map(img => {
-        // 💡 同様に、LocalStorageの変更後の名前か、元のファイル名（拡張子なし）を判定して表示する
         const displayName = displayNames[img] || img.replace(/\.png$/i, '');
 
         return `
@@ -476,6 +485,11 @@ document.getElementById('closeGuideBtn').addEventListener('click', () => {
         localStorage.setItem('skipSetupGuide', 'true');
     }
     guideModal.style.display = 'none';
+});
+
+// 💡 並び替えが変更されたらUIを即リフレッシュ
+document.getElementById('sortSelect').addEventListener('change', () => {
+    refreshGalleryUI();
 });
 
 function escapeHtml(str) {

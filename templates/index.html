@@ -76,11 +76,22 @@
             <span id="status" style="min-width: 150px; white-space: nowrap;">Status: Idle</span>
         </div>
 
-        <div class="controls" style="flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start;">
-            <button id="selectAllBtn" class="btn" style="background: #3498db;">全選択</button>
-            <button id="deselectAllBtn" class="btn" style="background: #999; display:none;">選択解除</button>
-            <button id="deleteSelectedBtn" class="btn stop" style="display:none;">消去 (<span id="selectCount">0</span>)</button>
-            <button id="downloadBtn" class="btn start" style="display:none; background: #3498db;">ダウンロード (<span id="downloadCount">0</span>)</button>
+        <div class="controls" style="flex-wrap: nowrap; overflow-x: auto; justify-content: space-between; align-items: center; width: 100%;">
+            <div style="display: flex; gap: 10px;">
+                <button id="selectAllBtn" class="btn" style="background: #3498db;">全選択</button>
+                <button id="deselectAllBtn" class="btn" style="background: #999; display:none;">選択解除</button>
+                <button id="deleteSelectedBtn" class="btn stop" style="display:none;">消去 (<span id="selectCount">0</span>)</button>
+                <button id="downloadBtn" class="btn start" style="display:none; background: #3498db;">ダウンロード (<span id="downloadCount">0</span>)</button>
+            </div>
+
+            <div style="margin-left: auto;">
+                <label style="margin: 0; white-space: nowrap;">並び替え: 
+                    <select id="sortSelect" style="padding: 8px; border-radius: 5px; border: 1px solid #333; background: #252525; color: white; cursor: pointer;">
+                        <option value="desc">撮影が新しい順</option>
+                        <option value="asc">撮影が古い順</option>
+                    </select>
+                </label>
+            </div>
         </div>
 
         <div class="log-container">
