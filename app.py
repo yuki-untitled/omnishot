@@ -14,6 +14,7 @@ import shutil
 import logging
 import json
 from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, Response
+from werkzeug.utils import secure_filename
 
 # Windows用にウインドウ非表示フラグを定義
 CREATE_NO_WINDOW = 0x08000000 if platform.system() == "Windows" else 0
@@ -347,9 +348,8 @@ def auto_capture_static_mode():
             if is_running and os.path.exists(temp_file):
                 prefix = current_config["prefix"]
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
-                microseconds = str(time.time()).split('.')[1][:6]
                 prefix_part = f"{prefix}_" if prefix else ""
-                final_name = f"{prefix_part}{device_type}_{timestamp}_{microseconds}.png"
+                final_name = f"{prefix_part}{device_type}_{timestamp}.png"
                 
                 save_path = os.path.join(SAVE_DIR, final_name)
                 os.rename(temp_file, save_path)
@@ -391,9 +391,8 @@ def auto_capture_dynamic_mode():
             if auto_capture_dynamic_mode.stable_count >= frames_needed and not auto_capture_dynamic_mode.already_captured and is_running:
                 prefix = current_config["prefix"]
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
-                microseconds = str(time.time()).split('.')[1][:6]
                 prefix_part = f"{prefix}_" if prefix else ""
-                final_name = f"{prefix_part}{device_type}_{timestamp}_{microseconds}.png"
+                final_name = f"{prefix_part}{device_type}_{timestamp}.png"
                 
                 save_path = os.path.join(SAVE_DIR, final_name)
                 os.rename(temp_file, save_path)
@@ -456,7 +455,11 @@ def shutdown():
 
 @app.route('/images')
 def get_images():
-    images = sorted([f for f in os.listdir(SAVE_DIR) if f.endswith('.png') and f != 'temp_check.png'], reverse=True)
+    # ファイル一覧を撮影時間（ファイル名のタイムスタンプ部分）でソート
+    # ファイル名フォーマット: [prefix_]Device_YYYYMMDD_HHMMSS_microseconds.png
+    images = [f for f in os.listdir(SAVE_DIR) if f.endswith('.png') and f != 'temp_check.png']
+    # タイムスタンプをキーにして最新順でソート
+    images.sort(key=lambda x: os.path.getmtime(os.path.join(SAVE_DIR, x)), reverse=True)
     return jsonify(images)
 
 @app.route('/update_settings')
@@ -520,37 +523,78 @@ def clear_all():
 def delete_selected():
     data = request.json
     filenames = data.get('filenames', [])
+    
+    # 💡 captures フォルダ内の本物のファイル名リストを事前取得
+    actual_files = [f for f in os.listdir(SAVE_DIR) if f.endswith('.png')]
+    
+    deleted_count = 0
     for name in filenames:
+        # 1. 本物のファイル名がそのまま届いた場合は直接削除
         path = os.path.join(SAVE_DIR, name)
         if os.path.exists(path):
             os.remove(path)
-    add_log(f"🗑️ 選択された {len(filenames)} 件の画像を削除しました")
+            deleted_count += 1
+            continue
+            
+        # 2. 💡 日本語名（表示名）が届いた場合、フォルダ内のファイル群から前方一致で本物を探して削除
+        # 例: 「ようこそ.png」が届いたら、「iOS_20260528_105154」のような本物を特定する
+        target_base = name.replace('.png', '').strip()
+        for actual_name in actual_files:
+            if actual_name.replace('.png', '') == target_base:
+                actual_path = os.path.join(SAVE_DIR, actual_name)
+                if os.path.exists(actual_path):
+                    os.remove(actual_path)
+                    deleted_count += 1
+                    break
+
+    add_log(f"🗑️ 選択された {deleted_count} 件の画像をフォルダから削除しました")
     return "Deleted"
 
 @app.route('/download_selected', methods=['POST'])
 def download_selected():
     data = request.json
     filenames = data.get('filenames', [])
+    zip_name = data.get('zipName', 'captures') # JS側のキー名 'zipName' に合わせる
+    name_map = data.get('nameMap', [])        # 💡 JS側から届く名前の対応表を取得
     
     if not filenames:
         return "No files selected", 400
+
+    # 💡 内部ファイル名から、ユーザーが変更した表示名（日本語名）を引ける辞書を作る
+    output_names = {item['file']: item['outputName'] for item in name_map}
 
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, 'w') as zf:
         for name in filenames:
             path = os.path.join(SAVE_DIR, name)
             if os.path.exists(path):
-                zf.write(path, arcname=name)
+                # 💡 変更後の名前（日本語）があればそれを使い、なければ元の名前でZIPに保存する
+                arcname = output_names.get(name, name)
+                zf.write(path, arcname=arcname)
     
     memory_file.seek(0)
     
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
     return send_file(
         memory_file,
         mimetype='application/zip',
         as_attachment=True,
-        download_name=f'captures_{timestamp}.zip'
+        download_name=zip_name if zip_name.endswith('.zip') else f"{zip_name}.zip"
     )
+
+@app.route('/rename', methods=['POST'])
+def rename_image():
+    data = request.json
+    old_display = data.get('oldDisplay', '')  # 変更前の表示名
+    new_display = data.get('newDisplay', '')  # 変更後の表示名（空欄時はオリジナル名）
+    
+    if new_display:
+        # 💡 名前が新しく設定された場合のログ
+        add_log(f"🔁 表示名変更: {old_display} → {new_display}")
+    else:
+        # 💡 空欄リセットされた場合のログ
+        add_log(f"🔄 表示名を元のファイル名にリセットしました: {old_display}")
+        
+    return jsonify({"ok": True})
 
 if __name__ == '__main__':
     # 💡 既存のサーバー（ポート5001）が起動している場合は強制終了する

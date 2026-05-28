@@ -3,7 +3,6 @@ let logMessages = [];
 
 // --- ボタン操作 ---
 document.getElementById('startBtn').addEventListener('click', () => {
-    const prefix = document.getElementById('prefix').value;
     const interval = document.getElementById('checkInterval').value;
     const mode = document.getElementById('modeSelect').value;
     
@@ -16,7 +15,8 @@ document.getElementById('startBtn').addEventListener('click', () => {
         settling = parseFloat(interval) * parseInt(judgeCount);
     }
 
-    fetch(`/start?prefix=${encodeURIComponent(prefix)}&interval=${interval}&settling=${settling}&mode=${mode}`)
+    // prefix入力欄を廃止したため、サーバーへは prefix を送らない
+    fetch(`/start?interval=${interval}&settling=${settling}&mode=${mode}`)
         .then(() => {
             document.getElementById('status').innerText = "Status: Capturing...";
             document.getElementById('status').style.color = "#2ecc71";
@@ -34,6 +34,13 @@ document.getElementById('stopBtn').addEventListener('click', () => {
 let selectedFiles = new Set();
 let allImages = [];
 let currentPreviewIndex = 0;
+let displayNames = {};
+try {
+    const stored = localStorage.getItem('displayNames');
+    if (stored) displayNames = JSON.parse(stored);
+} catch (e) {
+    console.warn('Failed to load displayNames from localStorage', e);
+}
 
 // ギャラリー更新ロジック
 function updateGallery() {
@@ -41,19 +48,30 @@ function updateGallery() {
         .then(res => res.json())
         .then(data => {
             const newJson = JSON.stringify(data);
-            if (newJson !== currentImagesJson) {
+            // 💡 初回（currentImagesJson が空）か、データに変更があった場合のみ描画する
+            if (currentImagesJson === "" || newJson !== currentImagesJson) {
                 currentImagesJson = newJson;
                 allImages = data; // プレビュー用に保存
+
                 const gallery = document.getElementById('gallery');
-                gallery.innerHTML = data.map(img => `
-                    <div class="card ${selectedFiles.has(img) ? 'selected' : ''}" data-filename="${img}">
-                        <input type="checkbox" class="select-checkbox" 
-                            ${selectedFiles.has(img) ? 'checked' : ''} 
-                            onclick="toggleSelect('${img}')">
-                        <img src="/static/captures/${img}?t=${new Date().getTime()}" onclick="openPreview('${img}')" style="cursor: pointer;">
-                        <div class="card-info">${img}</div>
-                    </div>
-                `).join('');
+                if (gallery) { // 💡 要素の存在チェックを追加して安全にする
+                    gallery.innerHTML = data.map(img => {
+                        // もしLocalStorageに変更後の名前があればそれを使い、なければ元のファイル名（拡張子なし）を表示する
+                        const displayName = displayNames[img] || img.replace(/\.png$/i, '');
+                        
+                        return `
+                            <div class="card ${selectedFiles.has(img) ? 'selected' : ''}" data-filename="${img}">
+                                <input type="checkbox" class="select-checkbox" 
+                                    ${selectedFiles.has(img) ? 'checked' : ''} 
+                                    onclick="toggleSelect('${img}')">
+                                <img src="/static/captures/${img}?t=${new Date().getTime()}" onclick="openPreview('${img}')" style="cursor: pointer;">
+                                <div class="card-info">
+                                    <span class="display-name" data-filename="${img}">${escapeHtml(displayName)}</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
             }
             setTimeout(updateGallery, 1500);
         });
@@ -162,15 +180,24 @@ document.getElementById('deselectAllBtn').addEventListener('click', () => {
 // ギャラリーUI更新関数
 function refreshGalleryUI() {
     const gallery = document.getElementById('gallery');
-    gallery.innerHTML = allImages.map(img => `
-        <div class="card ${selectedFiles.has(img) ? 'selected' : ''}" data-filename="${img}">
-            <input type="checkbox" class="select-checkbox" 
-                ${selectedFiles.has(img) ? 'checked' : ''} 
-                onclick="toggleSelect('${img}')">
-            <img src="/static/captures/${img}?t=${new Date().getTime()}" onclick="openPreview('${img}')" style="cursor: pointer;">
-            <div class="card-info">${img}</div>
-        </div>
-    `).join('');
+    if (!gallery) return;
+
+    gallery.innerHTML = allImages.map(img => {
+        // 💡 同様に、LocalStorageの変更後の名前か、元のファイル名（拡張子なし）を判定して表示する
+        const displayName = displayNames[img] || img.replace(/\.png$/i, '');
+
+        return `
+            <div class="card ${selectedFiles.has(img) ? 'selected' : ''}" data-filename="${img}">
+                <input type="checkbox" class="select-checkbox" 
+                    ${selectedFiles.has(img) ? 'checked' : ''} 
+                    onclick="toggleSelect('${img}')">
+                <img src="/static/captures/${img}?t=${new Date().getTime()}" onclick="openPreview('${img}')" style="cursor: pointer;">
+                <div class="card-info">
+                    <span class="display-name" data-filename="${img}">${escapeHtml(displayName)}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
 // 選択削除ボタン
@@ -196,11 +223,23 @@ document.getElementById('deleteSelectedBtn').addEventListener('click', () => {
 // ダウンロードボタンのイベント
 document.getElementById('downloadBtn').addEventListener('click', () => {
     if (selectedFiles.size === 0) return;
+    // ダウンロード時にZIP名をユーザーに入力してもらう
+    const defaultName = `manual_assets_${new Date().getTime()}`;
+    const inputName = prompt('保存するZIPファイル名を入力してください（拡張子 .zip は不要）', defaultName);
+    if (inputName === null) return; // キャンセル時は中断
+    const zipFilename = inputName.trim() === '' ? defaultName + '.zip' : (inputName.endsWith('.zip') ? inputName : inputName + '.zip');
+
+    // 選択ファイルを内部ファイル名の降順でソートし、新しい順でZIPに含める
+    const selectedArray = Array.from(selectedFiles).sort((a, b) => b.localeCompare(a, undefined, { numeric: true, sensitivity: 'base' }));
+    const nameMap = selectedArray.map(file => {
+        const displayBase = displayNames[file] ? displayNames[file].replace(/\.png$/i, '') : file.replace(/\.png$/i, '');
+        return { file, outputName: `${displayBase}.png` };
+    });
 
     fetch('/download_selected', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filenames: Array.from(selectedFiles) })
+        body: JSON.stringify({ filenames: selectedArray, zipName: zipFilename, nameMap })
     })
     .then(res => res.blob())
     .then(blob => {
@@ -208,7 +247,7 @@ document.getElementById('downloadBtn').addEventListener('click', () => {
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = url;
-        a.download = `manual_assets_${new Date().getTime()}.zip`;
+        a.download = zipFilename;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -244,7 +283,6 @@ function startLogStream() {
 
 // 設定が変更されたら即座にサーバーへ送る関数
 function sendSettings() {
-    const prefix = document.getElementById('prefix').value;
     const interval = document.getElementById('checkInterval').value;
     const mode = document.getElementById('modeSelect').value;
     
@@ -256,11 +294,10 @@ function sendSettings() {
         settling = parseFloat(interval) * parseInt(judgeCount);
     }
 
-    fetch(`/update_settings?prefix=${encodeURIComponent(prefix)}&interval=${interval}&settling=${settling}&mode=${mode}`);
+    fetch(`/update_settings?interval=${interval}&settling=${settling}&mode=${mode}`);
 }
 
 // 各入力欄のイベント監視
-document.getElementById('prefix').addEventListener('input', sendSettings);
 document.getElementById('checkInterval').addEventListener('input', sendSettings);
 document.getElementById('settlingTime').addEventListener('input', sendSettings);
 document.getElementById('judgeCount').addEventListener('input', sendSettings);
@@ -282,6 +319,107 @@ function updateModeDisplay() {
         if (staticLabel) staticLabel.style.display = 'none';
         if (dynamicLabel) dynamicLabel.style.display = 'inline';
     }
+}
+
+// クリックで表示名を編集できるようにする（イベントデリゲーション）
+document.addEventListener('click', (e) => {
+    const target = e.target;
+    if (target && target.classList && target.classList.contains('display-name')) {
+        const filename = target.getAttribute('data-filename');
+        startEditDisplayName(target, filename);
+    }
+});
+
+function startEditDisplayName(spanEl, filename) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'edit-name-input';
+    
+    // 現在の表示名（拡張子なし）を初期値にする
+    const currentBase = (displayNames[filename] || filename).replace(/\.png$/i, '');
+    input.value = currentBase;
+    input.style.width = '100%';
+    spanEl.replaceWith(input);
+    input.focus();
+    input.setSelectionRange(currentBase.length, currentBase.length);
+
+    let isFinished = false;
+    let isComposing = false;
+
+    input.addEventListener('compositionstart', () => { isComposing = true; });
+    input.addEventListener('compositionend', () => { isComposing = false; });
+
+    function finish(save) {
+        if (isFinished) return;
+        isFinished = true;
+
+        if (save) {
+            let userInput = input.value.trim();
+            const oldDisplay = displayNames[filename] || filename.replace(/\.png$/i, '');
+
+            if (!userInput) {
+                // 空白（空欄）にされた場合は表示名マップから消去
+                delete displayNames[filename];
+                
+                // 💡 サーバーにリセットログを通知
+                fetch('/rename', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ oldDisplay: oldDisplay, newDisplay: '' })
+                });
+            } else {
+                const cleanInputBase = userInput.replace(/\.png$/i, '');
+                
+                // 変更がなければ何もしない
+                if (cleanInputBase === currentBase) {
+                    revertSpan();
+                    return;
+                }
+                
+                // 表示名マップに保存
+                displayNames[filename] = cleanInputBase;
+
+                // 💡 サーバーに変更ログを通知
+                fetch('/rename', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ oldDisplay: oldDisplay, newDisplay: cleanInputBase })
+                });
+            }
+
+            // ローカルストレージに保存
+            try { localStorage.setItem('displayNames', JSON.stringify(displayNames)); } catch(e){}
+
+            // UIを即座にリフレッシュ
+            refreshGalleryUI();
+        } else {
+            revertSpan();
+        }
+    }
+
+    function revertSpan() {
+        const span = document.createElement('span');
+        span.className = 'display-name';
+        span.setAttribute('data-filename', filename);
+        span.innerText = displayNames[filename] || filename.replace(/\.png$/i, '');
+        input.replaceWith(span);
+        isFinished = false;
+    }
+
+    input.addEventListener('blur', () => {
+        if (!isComposing) finish(true);
+    });
+
+    input.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+            if (isComposing) return;
+            ev.preventDefault();
+            input.blur();
+        } else if (ev.key === 'Escape') {
+            ev.preventDefault();
+            finish(false);
+        }
+    });
 }
 
 // --- 初回セットアップガイドの制御 ---
@@ -339,6 +477,16 @@ document.getElementById('closeGuideBtn').addEventListener('click', () => {
     }
     guideModal.style.display = 'none';
 });
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
 
 // 初期化実行
 updateModeDisplay();
