@@ -237,8 +237,19 @@ document.getElementById('deleteSelectedBtn').addEventListener('click', () => {
 // ダウンロードボタンのイベント
 document.getElementById('downloadBtn').addEventListener('click', () => {
     if (selectedFiles.size === 0) return;
-    // ダウンロード時にZIP名をユーザーに入力してもらう
-    const defaultName = `manual_assets_${new Date().getTime()}`;
+
+    // 💡 現在の日時から「YYYYMMDD_HHMMSS」のフォーマットを作成
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const date = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    
+    // 💡 デフォルトのZIPファイル名を「manual_assets_日付_時間」にする
+    const defaultName = `OmniShot_${year}${month}${date}_${hours}${minutes}${seconds}`;
+    
     const inputName = prompt('保存するZIPファイル名を入力してください（拡張子 .zip は不要）', defaultName);
     if (inputName === null) return; // キャンセル時は中断
     const zipFilename = inputName.trim() === '' ? defaultName + '.zip' : (inputName.endsWith('.zip') ? inputName : inputName + '.zip');

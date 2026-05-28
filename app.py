@@ -441,6 +441,8 @@ def shutdown():
     
     def kill_process():
         time.sleep(0.5)
+        
+        # 1. captures フォルダの削除
         try:
             if os.path.exists(SAVE_DIR):
                 shutil.rmtree(SAVE_DIR)
@@ -448,6 +450,16 @@ def shutdown():
         except Exception as e:
             print(f"⚠️ フォルダ削除中にエラーが発生: {e}")
             
+        # 2. 💡 selfidentity.plist の自動削除を追加
+        try:
+            plist_path = os.path.join(EXE_DIR, "selfidentity.plist")
+            if os.path.exists(plist_path):
+                os.remove(plist_path)
+                print("🧹 selfidentity.plist を正常に削除しました。")
+        except Exception as e:
+            print(f"⚠️ plistファイルの削除中にエラーが発生: {e}")
+            
+        # プロセスの完全終了
         os._exit(0)
         
     threading.Thread(target=kill_process).start()
