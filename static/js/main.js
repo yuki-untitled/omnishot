@@ -143,6 +143,25 @@ function updateModeDisplay() {
     }
 }
 
+// ステータスの監視とUI同期
+setInterval(() => {
+    fetch('/status')
+        .then(res => res.json())
+        .then(data => {
+            const isCapturing = elStatus.innerText.includes("Capturing");
+            
+            if (isCapturing && !data.is_running) {
+                elStatus.innerText = "Status: Idle";
+                elStatus.style.color = "#888";
+                
+                // エラー理由があればそれを表示、なければ標準メッセージ
+                const message = data.error ? `${data.error}` : "自動撮影を停止しました。";
+                alert(message);
+            }
+        })
+        .catch(err => console.error("Status check failed:", err));
+}, 2000);
+
 
 // ==========================================================================
 // 3. プレビューモーダル制御

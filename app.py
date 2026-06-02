@@ -1,3 +1,4 @@
+import atexit
 import collections
 import cv2
 import io
@@ -33,6 +34,7 @@ os.makedirs(SAVE_DIR, exist_ok=True)
 # 状態管理・ストリーム管理
 is_running = False
 stream_process = None
+last_error = None
 last_frame_data = None
 bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=5, varThreshold=16, detectShadows=False)
 
@@ -70,6 +72,9 @@ def add_log(message):
 # ==========================================
 class DeviceManager:
     def __init__(self):
+        # 属性の定義は必ずここで行います
+        self.processes = [] 
+        
         if platform.system() == "Windows":
             self.adb = os.path.join(base_path, "bin", "win", "adb.exe")
             self.ios = os.path.join(base_path, "bin", "win", "go-ios.exe")
@@ -78,54 +83,78 @@ class DeviceManager:
             self.ios = os.path.join(base_path, "bin", "mac", "go-ios")
             if os.path.exists(self.adb): os.chmod(self.adb, 0o755)
             if os.path.exists(self.ios): os.chmod(self.ios, 0o755)
+            
         self.cached_device = None
+        atexit.register(self.cleanup_all_processes)
 
     def detect_device(self):
+        found_devices = []
+        
+        # 1. Android判定
+        try:
+            # サーバー起動を待つためタイムアウトを 5.0秒 に
+            res = subprocess.run([self.adb, "devices"], capture_output=True, text=True, timeout=5.0, creationflags=CREATE_NO_WINDOW)
+            lines = res.stdout.strip().split('\n')
+            # 2行目以降のデバイスリストをチェック
+            for line in lines[1:]:
+                if "\tdevice" in line:
+                    found_devices.append("android")
+                    break
+        except Exception as e:
+            print(f"DEBUG: Android check failed: {e}")
+        
+        # 2. iOS判定 (結果が空リストでないことを厳密に確認)
         try:
             res = subprocess.run([self.ios, "list"], capture_output=True, text=True, timeout=1.0, creationflags=CREATE_NO_WINDOW)
-            if "0000" in res.stdout:
-                self.cached_device = "ios"
-                return "ios"
+            # JSONが空ではない、かつリストの中身があるか確認
+            if "deviceList" in res.stdout and '[]' not in res.stdout:
+                found_devices.append("ios")
         except: pass
-        try:
-            res = subprocess.run([self.adb, "devices"], capture_output=True, text=True, timeout=1.0, creationflags=CREATE_NO_WINDOW)
-            lines = res.stdout.strip().split('\n')
-            if len(lines) > 1 and "device" in lines[1]:
-                self.cached_device = "android"
-                return "android"
-        except: pass
-        self.cached_device = None
-        return None
+
+        return found_devices
 
     def start_stream(self):
-        """デバイスに応じたバックグラウンド動画ストリームを開始"""
-        global stream_process
-        device = self.detect_device()
+        self.cleanup_all_processes()
+        device_list = self.detect_device()
         
-        if device == "ios":
-            add_log("📱 iOS ストリーム接続を開始します...")
-            env = os.environ.copy()
-            env["ENABLE_GO_IOS_AGENT"] = "user"
-            stream_process = subprocess.Popen(
-                [self.ios, "screenshot", "--stream", "--port=3333"], 
-                env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW
-            )
-            time.sleep(1.5) # 起動待機
-            return "ios"
+        if not device_list:
+            time.sleep(1.0)
+            devices = self.detect_device()
+            if not devices:
+                return None, "❌ デバイスが検出されませんでした。ケーブルを確認してください。"
+
+        device = device_list[0]  # 最初のデバイスを優先して使用
+
+        try:
+            if device == "ios":
+                add_log("📱 iOS ストリーム接続を開始します...")
+                env = os.environ.copy()
+                env["ENABLE_GO_IOS_AGENT"] = "user"
+                p = subprocess.Popen(
+                    [self.ios, "screenshot", "--stream", "--port=3333"], 
+                    env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW
+                )
+                self.processes.append(p)
+                time.sleep(1.5)
+                return "ios", None  # タプルで返す
             
-        elif device == "android":
-            add_log("🤖 Android ストリーム接続を開始します...")
-            subprocess.run([self.adb, "forward", "--remove-all"], creationflags=CREATE_NO_WINDOW)
-            subprocess.run([self.adb, "forward", "tcp:3333", "localabstract:minicap"], creationflags=CREATE_NO_WINDOW)
-            
-            stream_process = subprocess.Popen(
-                [self.adb, "shell", "screenrecord", "--output-format=h264", "-"], 
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW
-            )
-            time.sleep(1.5) # 接続待機
-            return "android"
-            
-        return None
+            elif device == "android":
+                add_log("🤖 Android ストリーム接続を開始します...")
+                subprocess.run([self.adb, "forward", "--remove-all"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+                subprocess.run([self.adb, "forward", "tcp:3333", "tcp:3333"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+
+                p = subprocess.Popen(
+                    [self.adb, "shell", "screenrecord", "--output-format=h264", "-"], 
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW
+                )
+                self.processes.append(p)
+                return "android", None  # タプルで返す
+                
+        except Exception as e:
+            add_log(f"詳細エラー: {type(e).__name__}: {str(e)}")
+            return None, f"❌ ストリームの開始に失敗しました: {str(e)}"
 
     def capture_high_quality(self, output_path):
         """静止した瞬間のみ叩かれる、最高画質のロスレススクリーンショット"""
@@ -141,16 +170,22 @@ class DeviceManager:
         return None
 
     def stop_stream(self):
-        """ストリームプロセスを安全にクローズ"""
-        global stream_process
-        if stream_process:
-            stream_process.terminate()
-            stream_process.wait()
-            stream_process = None
+        """ストリームプロセスを安全にクローズ（クラス内で完結）"""
+        self.cleanup_all_processes()
         add_log("🔌 ストリーム接続を閉じました")
+    
+    def cleanup_all_processes(self):
+        """管理している全プロセスを終了"""
+        for p in self.processes:
+            try:
+                p.terminate()
+                p.wait(timeout=1)
+            except:
+                pass
+        self.processes.clear()
 
-class StreamReceiver(threading.Thread):
-    """バックグラウンドで常にストリームを読み込み、常に最新の1コマだけを保持するクラス"""
+class iOSStreamReceiver(threading.Thread):
+    """iOS専用:バックグラウンドで常にストリームを読み込み、常に最新の1コマだけを保持するクラス"""
     def __init__(self, url):
         super().__init__()
         self.url = url
@@ -161,29 +196,67 @@ class StreamReceiver(threading.Thread):
     def run(self):
         while self.running:
             try:
-                stream = urllib.request.urlopen(self.url, timeout=5)
-                bytes_data = b''
-                while self.running:
-                    chunk = stream.read(4096)
-                    if not chunk: break
-                    bytes_data += chunk
-                    
-                    while True:
-                        a = bytes_data.find(b'\xff\xd8')
-                        b = bytes_data.find(b'\xff\xd9')
-                        if a != -1 and b != -1 and a < b:
-                            jpg = bytes_data[a:b+2]
-                            bytes_data = bytes_data[b+2:]
-                            frame = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
-                            if frame is not None:
-                                self.latest_frame = frame  # 常に最新フレームで上書き
-                        else:
-                            break
-            except Exception:
-                time.sleep(1.0)
+                # 接続エラーが起きたら即座に外側のループまで抜けるように
+                with urllib.request.urlopen(self.url, timeout=5) as stream:
+                    bytes_data = b''
+                    while self.running:
+                        chunk = stream.read(4096)
+                        if not chunk: break
+                        bytes_data += chunk
+                        
+                        while True:
+                            a = bytes_data.find(b'\xff\xd8')
+                            b = bytes_data.find(b'\xff\xd9')
+                            if a != -1 and b != -1 and a < b:
+                                jpg = bytes_data[a:b+2]
+                                bytes_data = bytes_data[b+2:]
+                                frame = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
+                                if frame is not None:
+                                    self.latest_frame = frame
+                            else:
+                                break
+            except Exception as e:
+                # 接続が切れたらエラーを記録し、runningをFalseにしてループを終了させる
+                print(f"Debug:⚠️ iOS device disconnected: {e}")
+                self.last_error = f"⚠️ iOSデバイスとの接続が切れました"
+                self.running = False 
+                break
 
     def stop(self):
         self.running = False
+    
+    def is_healthy(self):
+        return self.is_alive() and self.running
+
+class AndroidScreencapReceiver(threading.Thread):
+    """Android専用：ADB経由でJPEGを連続キャプチャするクラス"""
+    def __init__(self, adb_path):
+        super().__init__()
+        self.adb = adb_path
+        self.latest_frame = None
+        self.running = True
+        self.daemon = True
+
+    def run(self):
+        while self.running:
+            try:
+                res = subprocess.run([self.adb, "exec-out", "screencap", "-p"], capture_output=True, check=True)
+                if res.stdout:
+                    frame = cv2.imdecode(np.frombuffer(res.stdout, dtype=np.uint8), cv2.IMREAD_COLOR)
+                    if frame is not None:
+                        self.latest_frame = frame
+            except Exception as e:
+                print(f"Debug:⚠️ Android device disconnected: {e}")
+                self.last_error = f"⚠️ Androidデバイスとの接続が切れました"
+                self.running = False
+                break
+            time.sleep(0.05)
+
+    def stop(self):
+        self.running = False
+    
+    def is_healthy(self):
+        return self.is_alive() and self.running
 
 dev_manager = DeviceManager()
 
@@ -250,11 +323,14 @@ def get_stream_frames(url, device_type):
 
 
 def auto_capture_loop():
-    global is_running, last_frame_data
+    global is_running, last_error, last_frame_data
     
-    device_type = dev_manager.start_stream()
+    last_error = None
+    
+    device_type, error_msg = dev_manager.start_stream()
     if not device_type:
-        add_log("❌ デバイスが検出されないか、ストリームの開始に失敗しました。")
+        last_error = error_msg
+        add_log(f"{error_msg}")
         is_running = False
         return
 
@@ -262,12 +338,20 @@ def auto_capture_loop():
     stable_count = 0
     already_captured = False
     
-    # ストリーム受信のバックグラウンド開始
-    receiver = StreamReceiver("http://127.0.0.1:3333")
+    if device_type == "android":
+        receiver = AndroidScreencapReceiver(dev_manager.adb)
+    else:
+        receiver = iOSStreamReceiver("http://127.0.0.1:3333")
+
     receiver.start()
     time.sleep(0.5)
 
     while is_running:
+        if not receiver.is_healthy():
+            last_error = receiver.last_error or "ストリームが切断されました。"
+            add_log(f"{last_error}")
+            is_running = False
+            break
         start_time = time.time()
         conf = current_config
 
@@ -367,6 +451,14 @@ def index():
 @app.route('/help')
 def help_page():
     return render_template('help.html')
+
+@app.route('/status')
+def get_status():
+    return jsonify({
+        "is_running": is_running,
+        "error": last_error,
+        "mode": current_config["mode"],
+    })
 
 @app.route('/start')
 def start():
