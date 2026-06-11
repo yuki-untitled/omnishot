@@ -152,9 +152,9 @@ class DeviceManager:
             elif device == "android":
                 add_log("🤖 Android ストリーム接続を開始します...")
                 subprocess.run([self.adb, "forward", "--remove-all"], 
-                                startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW)
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW)
                 subprocess.run([self.adb, "forward", "tcp:3333", "tcp:3333"], 
-                                startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW)
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW)
 
                 p = subprocess.Popen(
                     [self.adb, "shell", "screenrecord", "--output-format=h264", "-"], 
@@ -171,7 +171,7 @@ class DeviceManager:
     def capture_high_quality(self, output_path):
         """静止した瞬間のみ叩かれる、最高画質のロスレススクリーンショット"""
         startupinfo = get_startupinfo()
-        
+
         if self.cached_device == "ios":
             env = os.environ.copy()
             env["ENABLE_GO_IOS_AGENT"] = "user"
