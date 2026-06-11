@@ -207,6 +207,41 @@ function nextImage() {
     }
 }
 
+function downloadCurrentPreview() {
+    const filename = allImages[currentPreviewIndex];
+    const link = document.createElement('a');
+    link.href = `/static/captures/${filename}`;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function deleteCurrentPreview() {
+    const filename = allImages[currentPreviewIndex];
+    if (!confirm(`${filename} を削除しますか？`)) return;
+
+    fetch('/delete_selected', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filenames: [filename] })
+    }).then(() => {
+        // サーバーからデータ取得し直してUIを更新
+        updateGallery();
+        
+        // モーダルの挙動制御
+        if (allImages.length <= 1) {
+            closePreview();
+        } else {
+            // 削除後、次の画像へスライド
+            if (currentPreviewIndex >= allImages.length - 1) {
+                currentPreviewIndex--;
+            }
+            showPreview();
+        }
+    });
+}
+
 
 // ==========================================================================
 // 4. 数値ガード & サーバー同期

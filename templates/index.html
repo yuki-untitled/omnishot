@@ -111,12 +111,18 @@
     
     <div id="gallery" class="gallery"></div>
 
-
     <div id="previewModal" class="preview-modal" style="display: none;">
         <div class="preview-content">
             <button id="closeModalBtn" class="close-modal">&times;</button>
             <button id="prevBtn" class="nav-btn prev-btn">&#10094;</button>
+            
             <img id="previewImage" src="" alt="Preview">
+            
+            <div class="preview-actions-corner">
+                <button onclick="downloadCurrentPreview()" class="action-btn download-btn" title="ダウンロード">📥</button>
+                <button onclick="deleteCurrentPreview()" class="action-btn delete-btn" title="削除">🗑️</button>
+            </div>
+
             <button id="nextBtn" class="nav-btn next-btn">&#10095;</button>
             <div id="previewInfo" class="preview-info"></div>
         </div>

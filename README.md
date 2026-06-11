@@ -63,6 +63,8 @@ python3 -m PyInstaller --onedir --windowed \
 ```
 ビルド完了後、`dist/OmniShot.app` が生成されます。
 
+#### macOSで実行する際に
+
 ### 💻 Windows (.exe 形式のビルド)
 Windows環境のコマンドプロンプトまたは PowerShell で以下を実行します（※パスの区切り文字が `;` になります）。
 ```bash
