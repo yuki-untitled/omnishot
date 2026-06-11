@@ -49,7 +49,7 @@ PyInstaller を使用して、配布用の単体アプリケーションを生�
 ターミナルでプロジェクトのルートディレクトリに移動し、以下のコマンドを実行します。
 ```bash
 # 古いビルドキャッシュの削除
-rm -rf build dist OmniShot.spec
+rm -rf build dist OmniShot.spec selfIdentity.plist
 
 # ビルドの実行
 python3 -m PyInstaller --onedir --windowed \
@@ -67,7 +67,7 @@ python3 -m PyInstaller --onedir --windowed \
 Windows環境のコマンドプロンプトまたは PowerShell で以下を実行します（※パスの区切り文字が `;` になります）。
 ```bash
 :: 古いビルドキャッシュの削除
-rmdir /s /q build dist OmniShot.spec
+rmdir /s /q build dist OmniShot.spec selfIdentity.plist
 
 :: ビルドの実行
 python -m PyInstaller --onefile --windowed `
