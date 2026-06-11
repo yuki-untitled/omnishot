@@ -18,6 +18,16 @@ import zipfile
 from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, Response
 
 CREATE_NO_WINDOW = 0x08000000 if platform.system() == "Windows" else 0
+def get_startupinfo():
+    if platform.system() == "Windows":
+        try:
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0  # SW_HIDE
+            return si
+        except Exception:
+            return None
+    return None
 
 if getattr(sys, 'frozen', False):
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
@@ -117,7 +127,8 @@ class DeviceManager:
     def start_stream(self):
         self.cleanup_all_processes()
         device_list = self.detect_device()
-        
+        startupinfo = get_startupinfo()
+
         if not device_list:
             time.sleep(1.0)
             devices = self.detect_device()
@@ -131,9 +142,8 @@ class DeviceManager:
                 add_log("📱 iOS ストリーム接続を開始します...")
                 env = os.environ.copy()
                 env["ENABLE_GO_IOS_AGENT"] = "user"
-                p = subprocess.Popen(
-                    [self.ios, "screenshot", "--stream", "--port=3333"], 
-                    env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW
+                p = subprocess.Popen([self.ios, "screenshot", "--stream", "--port=3333"], 
+                    env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW
                 )
                 self.processes.append(p)
                 time.sleep(1.5)
@@ -141,14 +151,15 @@ class DeviceManager:
             
             elif device == "android":
                 add_log("🤖 Android ストリーム接続を開始します...")
-                subprocess.run([self.adb, "forward", "--remove-all"],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
-                subprocess.run([self.adb, "forward", "tcp:3333", "tcp:3333"],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+                subprocess.run([self.adb, "forward", "--remove-all"], 
+                                startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW)
+                subprocess.run([self.adb, "forward", "tcp:3333", "tcp:3333"], 
+                                startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW)
 
                 p = subprocess.Popen(
                     [self.adb, "shell", "screenrecord", "--output-format=h264", "-"], 
-                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                    startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW
                 )
                 self.processes.append(p)
                 return "android", None  # タプルで返す
@@ -159,14 +170,16 @@ class DeviceManager:
 
     def capture_high_quality(self, output_path):
         """静止した瞬間のみ叩かれる、最高画質のロスレススクリーンショット"""
+        startupinfo = get_startupinfo()
+        
         if self.cached_device == "ios":
             env = os.environ.copy()
             env["ENABLE_GO_IOS_AGENT"] = "user"
-            res = subprocess.run([self.ios, "screenshot", f"--output={output_path}"], env=env, capture_output=True, creationflags=CREATE_NO_WINDOW)
+            res = subprocess.run([self.ios, "screenshot", f"--output={output_path}"], env=env, capture_output=True, startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW)
             return "iOS" if res.returncode == 0 else None
         elif self.cached_device == "android":
             with open(output_path, "wb") as f:
-                res = subprocess.run([self.adb, "exec-out", "screencap", "-p"], stdout=f, capture_output=False, creationflags=CREATE_NO_WINDOW)
+                res = subprocess.run([self.adb, "exec-out", "screencap", "-p"], stdout=f, capture_output=False, startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW)
             return "Android" if res.returncode == 0 else None
         return None
 
