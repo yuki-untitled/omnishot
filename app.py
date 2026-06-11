@@ -32,6 +32,7 @@ SAVE_DIR = os.path.join(EXE_DIR, "captures")
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 # 状態管理・ストリーム管理
+score_history = collections.deque(maxlen=3)
 is_running = False
 stream_process = None
 last_error = None
@@ -264,24 +265,34 @@ dev_manager = DeviceManager()
 # 判定・メインループ処理
 # ==========================================
 def process_frame_changed(frame, is_static_mode=False):
-    global last_frame_data
+    global last_frame_data, score_history
     if frame is None: return False
     
-    # 1. 常に固定サイズ（ハーフ解像度）にリサイズ
+    # 測定開始時刻を 'start_time' に保存
+    start_time = time.time()
+    
     h, w = frame.shape[:2]
     target_w, target_h = w // 2, h // 2
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    gray = cv2.resize(gray, (target_w, target_h))
-    
-    # 2. 基準データが存在しない、またはサイズ不一致なら再初期化（エラー回避）
+    gray = cv2.resize(gray, (target_w, target_h), interpolation=cv2.INTER_AREA)
+    gray = cv2.medianBlur(gray, 3)
+    # 現在時刻 - start_time で経過時間を計算
+    print(f"DEBUG: preprocess time: {time.time() - start_time:.4f}s")
+
+    # 基準データチェック
     if last_frame_data is None or last_frame_data.shape != gray.shape:
         last_frame_data = gray
         return False
     
-    # 3. 差分計算
+    # 差分計算
     diff = cv2.absdiff(last_frame_data, gray)
     score = np.mean(diff)
-    
+    print(f"DEBUG: absdiff time: {time.time() - start_time:.4f}s")
+
+    # 4. 3フレームの移動平均を取る
+    score_history.append(score)
+    score = sum(score_history) / len(score_history)
+
     # 4. 閾値判定
     threshold = 0.5 if is_static_mode else 0.25
     
@@ -355,22 +366,14 @@ def auto_capture_loop():
         start_time = time.time()
         conf = current_config
 
-        # その瞬間の「最新の1コマ」を直接取得
+        # 【改善1】receiver から取得する時は、最短で最新のものだけを取る
         frame = receiver.latest_frame
         if frame is None:
             time.sleep(0.05)
             continue
-
-        # 変化検知（仕様に沿った判定）
+            
+        # 【改善2】変化検知は 1 回のみ。sleep は外す
         changed = process_frame_changed(frame)
-
-        # # デバッグ用：変化なしと判定された時のスコアを表示
-        # if not changed:
-        #     # gray画像を計算してscoreを再計算
-        #     gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (frame.shape[1]//2, frame.shape[0]//2))
-        #     score = np.mean(cv2.absdiff(last_frame_data, gray))
-        #     if score > 0:
-        #         print(f"DEBUG: score={score:.4f} (変化なし判定)")
 
         frames_needed = max(1, int(conf["settling"] / conf["interval"]))
 
@@ -388,7 +391,12 @@ def auto_capture_loop():
                     # 待機が明けた「その瞬間」の最新フレームを再度取得して保存
                     final_frame = receiver.latest_frame if receiver.latest_frame is not None else frame
                     timestamp = time.strftime("%Y%m%d_%H%M%S")
-                    final_name = f"{conf['prefix']}_{device_type}_{timestamp}.png" if conf['prefix'] else f"{device_type}_{timestamp}.png"
+                    
+                    device_label = device_type.capitalize() # ios -> Ios となるため、以下の微調整を推奨
+                    if device_type.lower() == 'ios': device_label = 'iOS'
+                    elif device_type.lower() == 'android': device_label = 'Android'
+                    final_name = f"{conf['prefix']}_{device_label}_{timestamp}.png" if conf['prefix'] else f"{device_label}_{timestamp}.png"
+
                     dest_path = os.path.join(SAVE_DIR, final_name)
                     
                     cv2.imwrite(dest_path, final_frame)
@@ -396,7 +404,14 @@ def auto_capture_loop():
                     
                     # 撮影直後の状態を基準にする
                     last_frame_data = cv2.cvtColor(final_frame, cv2.COLOR_BGR2GRAY)
-                    time.sleep(0.3)
+
+                    # 判定履歴をリセットして、連続撮影を防止する
+                    score_history.clear()
+
+                    # 撮影直後のフレームをスキップして、判定を安定させる
+                    for _ in range(10):
+                        receiver.latest_frame = None
+                        time.sleep(0.05)
 
         # ==========================================
         # 🔵 動的モードの仕様
@@ -423,17 +438,29 @@ def auto_capture_loop():
                     if stable_count >= frames_needed:
                         if is_running:
                             timestamp = time.strftime("%Y%m%d_%H%M%S")
-                            final_name = f"{conf['prefix']}_{device_type}_{timestamp}.png" if conf['prefix'] else f"{device_type}_{timestamp}.png"
+
+                            device_label = device_type.capitalize()
+                            if device_type.lower() == 'ios': device_label = 'iOS'
+                            elif device_type.lower() == 'android': device_label = 'Android'
+                            final_name = f"{conf['prefix']}_{device_label}_{timestamp}.png" if conf['prefix'] else f"{device_label}_{timestamp}.png"
+                            
                             dest_path = os.path.join(SAVE_DIR, final_name)
                             
                             cv2.imwrite(dest_path, frame)
                             add_log(f"📸 撮影完了: {final_name}")
                             
-                            # 状態をロックし、カウントをクリア
+                            # 撮影後のクールダウン（判定ロジックを強制リセット）
                             already_captured = True
                             stable_count = 0
+                            
+                            # ここで現在のフレームを基準に上書きし、変化検知を「なし」からスタートさせる
+                            last_frame_data = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                            
+                            # 【改善】sleepの代わりに、受信バッファを空にする（捨ててから次に進む）
+                            for _ in range(20): # 少し多めに回す
+                                receiver.latest_frame = None
+                                time.sleep(0.05) # 合計1秒分を「受信待ち」で潰す
 
-        # 指定されたチェック間隔（0.5秒など）になるよう正確にウェイトを入れる
         elapsed = time.time() - start_time
         sleep_time = max(0.01, conf["interval"] - elapsed)
         time.sleep(sleep_time)

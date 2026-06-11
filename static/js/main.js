@@ -15,6 +15,7 @@ const elCheckInterval = document.getElementById('checkInterval');
 const elSettlingTime = document.getElementById('settlingTime');
 const elJudgeCount = document.getElementById('judgeCount');
 const elModeSelect = document.getElementById('modeSelect');
+const elDeviceFilter = document.getElementById('deviceFilter');
 const elSortSelect = document.getElementById('sortSelect');
 const elStatus = document.getElementById('status');
 const elGallery = document.getElementById('gallery');
@@ -80,14 +81,22 @@ function updateGallery() {
 function refreshGalleryUI() {
     if (!elGallery) return;
 
-    // 現在の選択順に応じてソートを適用
     const sortOrder = elSortSelect.value;
-    allImages.sort((a, b) => {
+    const filterValue = elDeviceFilter.value; // 追加: フィルター値を取得
+
+    // 1. まずフィルタリングしてからソートする
+    let filteredImages = allImages.filter(img => {
+        if (filterValue === 'all') return true;
+        return img.toLowerCase().startsWith(filterValue); // "ios_..." や "android_..." で判定
+    });
+
+    // 2. ソート
+    filteredImages.sort((a, b) => {
         return sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b);
     });
 
     const timestamp = new Date().getTime();
-    elGallery.innerHTML = allImages.map(img => {
+    elGallery.innerHTML = filteredImages.map(img => {
         const displayName = displayNames[img] || img.replace(/\.png$/i, '');
         const isSelected = selectedFiles.has(img);
         
@@ -387,6 +396,10 @@ document.getElementById('selectAllBtn').addEventListener('click', () => {
 elDeselectAllBtn.addEventListener('click', () => {
     selectedFiles.clear();
     updateUI();
+    refreshGalleryUI();
+});
+
+elDeviceFilter.addEventListener('change', () => {
     refreshGalleryUI();
 });
 

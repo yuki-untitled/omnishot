@@ -55,7 +55,7 @@
         <div class="header-top">
             <h1>📱 OmniShot</h1>
             <div class="header-actions">
-                <span class="header-note">選択した画像をzipファイルでダウンロードできます。また、ファイル名はギャラリーでクリックして編集できます。</span>
+                <span class="header-note">選択した画像をzipファイルでダウンロードできます。ファイル名をクリックして変更できます。</span>
                 <a href="{{ url_for('help_page') }}" class="btn header-btn header-help" onmouseover="this.style.background='#666'" onmouseout="this.style.background='#555'">ℹ️ 使い方</a>
                 <button id="openGuideBtn" class="btn header-btn header-guide" onmouseover="this.style.background='#555'" onmouseout="this.style.background='#444'">❓ 設定ガイド</button>
                 <button class="btn btn-danger header-btn header-exit" onclick="shutdownApp()">🛑 アプリ終了</button>
@@ -67,7 +67,7 @@
             
             <label id="staticLabel" style="display: inline;">静止待ち時間: <input type="number" id="settlingTime" value="1.0" step="0.1" min="0.1" max="30">s</label>
             
-            <label id="dynamicLabel" style="display: none;">判定回数: <input type="number" id="judgeCount" value="3" min="1" max="10">回</label>
+            <label id="dynamicLabel" style="display: none;">判定回数: <input type="number" id="judgeCount" value="1" min="1" max="10">回</label>
             
             <label>モード: 
                 <select id="modeSelect" style="padding: 8px; border-radius: 5px; border: 1px solid #333; background: #252525; color: white;">
@@ -89,13 +89,17 @@
                 <button id="downloadBtn" class="btn start" style="display: none; background: #3498db;">ダウンロード (<span id="downloadCount">0</span>)</button>
             </div>
 
-            <div style="margin-left: auto;">
-                <label style="margin: 0; white-space: nowrap;">並び替え: 
-                    <select id="sortSelect" style="padding: 8px; border-radius: 5px; border: 1px solid #333; background: #252525; color: white; cursor: pointer;">
-                        <option value="desc">撮影が新しい順</option>
-                        <option value="asc">撮影が古い順</option>
-                    </select>
-                </label>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <select id="deviceFilter" style="padding: 8px; border-radius: 5px; border: 1px solid #333; background: #252525; color: white;">
+                    <option value="all">全デバイス</option>
+                    <option value="ios">iOS のみ</option>
+                    <option value="android">Android のみ</option>
+                </select>
+
+                <select id="sortSelect" style="padding: 8px; border-radius: 5px; border: 1px solid #333; background: #252525; color: white;">
+                    <option value="desc">新しい順</option>
+                    <option value="asc">古い順</option>
+                </select>
             </div>
         </div>
 
