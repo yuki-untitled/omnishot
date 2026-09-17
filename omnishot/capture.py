@@ -1,3 +1,4 @@
+# 仕様: docs/spec/screenshot-capture.md
 import os
 import time
 
@@ -14,16 +15,11 @@ from .stream_receivers import AndroidScreencapReceiver, iOSStreamReceiver
 def process_frame_changed(frame, is_static_mode=False):
     if frame is None: return False
 
-    # 測定開始時刻を 'start_time' に保存
-    start_time = time.time()
-
     h, w = frame.shape[:2]
     target_w, target_h = w // 2, h // 2
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     gray = cv2.resize(gray, (target_w, target_h), interpolation=cv2.INTER_AREA)
     gray = cv2.medianBlur(gray, 3)
-    # 現在時刻 - start_time で経過時間を計算
-    print(f"DEBUG: preprocess time: {time.time() - start_time:.4f}s")
 
     # 基準データチェック
     if state.last_frame_data is None or state.last_frame_data.shape != gray.shape:
@@ -33,7 +29,6 @@ def process_frame_changed(frame, is_static_mode=False):
     # 差分計算
     diff = cv2.absdiff(state.last_frame_data, gray)
     score = np.mean(diff)
-    print(f"DEBUG: absdiff time: {time.time() - start_time:.4f}s")
 
     # 4. 3フレームの移動平均を取る
     state.score_history.append(score)
@@ -69,6 +64,7 @@ def auto_capture_loop():
 
     receiver.start()
     time.sleep(0.5)
+    last_frame_seq = None
 
     while state.is_running:
         if not receiver.is_healthy():
@@ -81,9 +77,18 @@ def auto_capture_loop():
 
         # 【改善1】receiver から取得する時は、最短で最新のものだけを取る
         frame = receiver.latest_frame
+        frame_seq = receiver.frame_seq
         if frame is None:
             time.sleep(0.05)
             continue
+
+        # 仕様: docs/spec/bugs/LOCAL-004_動的モードのフレーム重複による誤検知.md
+        # まだ新しいフレームが届いていない場合、同じフレームを「変化なし」として
+        # 二重にカウントしてしまうと誤って静止判定・撮影されるため、判定自体をスキップする
+        if frame_seq == last_frame_seq:
+            time.sleep(0.01)
+            continue
+        last_frame_seq = frame_seq
 
         # 【改善2】変化検知は 1 回のみ。sleep は外す
         changed = process_frame_changed(frame)
@@ -123,6 +128,7 @@ def auto_capture_loop():
 
                     # 撮影直後のフレームをスキップして、判定を安定させる
                     for _ in range(10):
+                        if not state.is_running: break
                         receiver.latest_frame = None
                         time.sleep(0.05)
 
@@ -171,6 +177,7 @@ def auto_capture_loop():
 
                             # 【改善】sleepの代わりに、受信バッファを空にする（捨ててから次に進む）
                             for _ in range(20): # 少し多めに回す
+                                if not state.is_running: break
                                 receiver.latest_frame = None
                                 time.sleep(0.05) # 合計1秒分を「受信待ち」で潰す
 

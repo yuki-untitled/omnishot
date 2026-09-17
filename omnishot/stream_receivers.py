@@ -1,3 +1,4 @@
+# 仕様: docs/spec/screenshot-capture.md
 import subprocess
 import threading
 import time
@@ -6,6 +7,8 @@ import urllib.request
 import cv2
 import numpy as np
 
+from .logs import add_log
+
 
 class iOSStreamReceiver(threading.Thread):
     """iOS専用:バックグラウンドで常にストリームを読み込み、常に最新の1コマだけを保持するクラス"""
@@ -13,6 +16,8 @@ class iOSStreamReceiver(threading.Thread):
         super().__init__()
         self.url = url
         self.latest_frame = None
+        # 仕様: docs/spec/bugs/LOCAL-004_動的モードのフレーム重複による誤検知.md
+        self.frame_seq = 0
         self.running = True
         self.daemon = True
 
@@ -36,11 +41,12 @@ class iOSStreamReceiver(threading.Thread):
                                 frame = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
                                 if frame is not None:
                                     self.latest_frame = frame
+                                    self.frame_seq += 1
                             else:
                                 break
             except Exception as e:
                 # 接続が切れたらエラーを記録し、runningをFalseにしてループを終了させる
-                print(f"Debug:⚠️ iOS device disconnected: {e}")
+                add_log(f"⚠️ iOS device disconnected: {e}")
                 self.last_error = f"⚠️ iOSデバイスとの接続が切れました"
                 self.running = False
                 break
@@ -58,6 +64,8 @@ class AndroidScreencapReceiver(threading.Thread):
         super().__init__()
         self.adb = adb_path
         self.latest_frame = None
+        # 仕様: docs/spec/bugs/LOCAL-004_動的モードのフレーム重複による誤検知.md
+        self.frame_seq = 0
         self.running = True
         self.daemon = True
 
@@ -69,8 +77,9 @@ class AndroidScreencapReceiver(threading.Thread):
                     frame = cv2.imdecode(np.frombuffer(res.stdout, dtype=np.uint8), cv2.IMREAD_COLOR)
                     if frame is not None:
                         self.latest_frame = frame
+                        self.frame_seq += 1
             except Exception as e:
-                print(f"Debug:⚠️ Android device disconnected: {e}")
+                add_log(f"⚠️ Android device disconnected: {e}")
                 self.last_error = f"⚠️ Androidデバイスとの接続が切れました"
                 self.running = False
                 break
