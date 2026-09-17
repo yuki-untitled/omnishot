@@ -43,14 +43,8 @@ const elSkipGuideCheck = document.getElementById('skipGuideCheck');
 const elCloseGuideBtn = document.getElementById('closeGuideBtn');
 const elOpenGuideBtn = document.getElementById('openGuideBtn');
 
-// LocalStorage から表示名マップを読み込み
-try {
-    const stored = localStorage.getItem('displayNames');
-    if (stored) displayNames = JSON.parse(stored);
-} catch (e) {
-    console.warn('Failed to load displayNames from localStorage', e);
-}
-
+// 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md
+// 表示名はサーバー側（/images のレスポンス）が唯一の情報源。localStorageには保存しない。
 
 // ==========================================================================
 // 2. ギャラリー & UI 制御関数
@@ -66,7 +60,8 @@ function updateGallery() {
             // 💡 サーバーデータに変化があった場合のみ並び替えと再描画を実行（軽量化・パタつき防止）
             if (currentImagesJson === "" || newJson !== currentImagesJson) {
                 currentImagesJson = newJson;
-                allImages = data;
+                allImages = data.images;
+                displayNames = data.displayNames || {};
                 refreshGalleryUI();
             }
             setTimeout(updateGallery, 1500);
@@ -305,31 +300,28 @@ function startEditDisplayName(spanEl, filename) {
         isFinished = true;
 
         if (save) {
-            let userInput = input.value.trim();
-            const oldDisplay = displayNames[filename] || filename.replace(/\.png$/i, '');
+            const userInput = input.value.trim();
+            const cleanInputBase = userInput.replace(/\.png$/i, '');
 
-            if (!userInput) {
-                delete displayNames[filename];
-                fetch('/rename', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ oldDisplay: oldDisplay, newDisplay: '' })
-                });
-            } else {
-                const cleanInputBase = userInput.replace(/\.png$/i, '');
-                if (cleanInputBase === currentBase) {
-                    revertSpan();
-                    return;
-                }
-                displayNames[filename] = cleanInputBase;
-                fetch('/rename', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ oldDisplay: oldDisplay, newDisplay: cleanInputBase })
-                });
+            if (cleanInputBase === currentBase) {
+                revertSpan();
+                return;
             }
 
-            try { localStorage.setItem('displayNames', JSON.stringify(displayNames)); } catch(e){}
+            // 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md
+            // ファイル名をキーにサーバーへ永続化する（表示名文字列同士の比較には依存しない）
+            if (cleanInputBase) {
+                displayNames[filename] = cleanInputBase;
+            } else {
+                delete displayNames[filename];
+            }
+
+            fetch('/rename', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: filename, displayName: cleanInputBase })
+            }).catch(err => console.error("Rename error:", err));
+
             refreshGalleryUI();
         } else {
             revertSpan();
@@ -479,15 +471,13 @@ elDownloadBtn.addEventListener('click', () => {
     const zipFilename = inputName.trim() === '' ? defaultName + '.zip' : (inputName.endsWith('.zip') ? inputName : inputName + '.zip');
 
     const selectedArray = Array.from(selectedFiles).sort((a, b) => b.localeCompare(a, undefined, { numeric: true, sensitivity: 'base' }));
-    const nameMap = selectedArray.map(file => {
-        const displayBase = displayNames[file] ? displayNames[file].replace(/\.png$/i, '') : file.replace(/\.png$/i, '');
-        return { file, outputName: `${displayBase}.png` };
-    });
 
+    // 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md
+    // ZIP内のファイル名はサーバー側に永続化された表示名を使って決定するため、ここでは送らない
     fetch('/download_selected', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filenames: selectedArray, zipName: zipFilename, nameMap })
+        body: JSON.stringify({ filenames: selectedArray, zipName: zipFilename })
     })
     .then(res => res.blob())
     .then(blob => {

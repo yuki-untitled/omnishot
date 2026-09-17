@@ -10,12 +10,15 @@ OmniShot は、iOS および Android 端末の画面変化を検知し、自動�
   * **静的モード:** 画面の変化を検知した後、指定した静止時間を待ってから撮影。
   * **動的モード:** 画面が動いている間は待機し、ピタッと止まった瞬間を狙って自動撮影。
 * **Web UI ギャラリー:** キャプチャした画像をブラウザ上でリアルタイムに確認・管理（全選択、一括ダウンロード、一括削除）。
+* **表示名の編集:** ギャラリー上でファイル名をクリックして任意の表示名に変更可能。サーバー側に永続化され、ZIPダウンロード時のファイル名にも反映される。
 
 ## 🗂️ プロジェクト構造
 
 ```tree
 .
-├── app.py                # Flask バックエンド & 制御ロジック
+├── run.py                # エントリーポイント（開発サーバー起動）
+├── requirements.txt      # 依存ライブラリ一覧
+├── omnishot/              # Flask バックエンド & 制御ロジック（パッケージ）
 ├── myicon.icns           # Mac用アプリケーションアイコン
 ├── README.md             # 本ドキュメント
 ├── bin/                  # コア・バイナリ（Git管理対象）
@@ -33,12 +36,12 @@ OmniShot は、iOS および Android 端末の画面変化を検知し、自動�
 
 1. 依存ライブラリのインストール
 ```bash
-pip install flask opencv-python numpy pyinstaller
+pip install -r requirements.txt
 ```
 
 2. アプリケーションの起動
 ```bash
-python3 app.py
+python3 run.py
 ```
 起動後、自動的にブラウザが立ち上がり、`http://127.0.0.1:5001` にアクセスします。
 
@@ -59,7 +62,7 @@ python3 -m PyInstaller --onedir --windowed \
   --name "OmniShot" \
   --icon=myicon.icns \
   --clean \
-  app.py
+  run.py
 ```
 ビルド完了後、`dist/OmniShot.app` が生成されます。
 
@@ -83,7 +86,7 @@ python -m PyInstaller --onefile --windowed `
   --name "OmniShot" `
   --icon="static/favicon.ico" `
   --clean `
-  app.py
+  run.py
 ```
 ビルド完了後、`dist/OmniShot.exe` が生成されます。
 
