@@ -23,16 +23,19 @@
 
 ## 開発環境での実行方法
 
-1. 依存ライブラリのインストール
+1. 仮想環境の作成・依存ライブラリのインストール
 ```bash
-pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate  # Windowsは .venv\Scripts\activate
+python3 -m pip install -r requirements.txt
 ```
+Homebrew版Pythonなど`pip`コマンドが無い環境では、`pip install ...`ではなく`python3 -m pip install ...`を使用してください。
 
 2. アプリケーションの起動
 ```bash
 python3 run.py
 ```
-起動後、自動的にブラウザが立ち上がり、`http://127.0.0.1:5001` にアクセスします。
+起動後、`pywebview`によるネイティブウィンドウが開き、`http://127.0.0.1:5001` のWeb UIが表示されます。
 
 ## 推奨される .gitignore
 

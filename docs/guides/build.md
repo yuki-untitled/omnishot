@@ -19,7 +19,7 @@ python3 -m PyInstaller --onedir --windowed \
   --clean \
   run.py
 ```
-ビルド完了後、`dist/OmniShot.app` が生成されます。
+ビルド完了後、`dist/OmniShot.app` が生成されます。`pywebview`（ネイティブウィンドウ化）に関する追加の`--hidden-import`指定は、実測の結果不要でした。
 
 ### ⚠️ macOSで `.app` を実行する際の注意点
 
@@ -45,6 +45,11 @@ python -m PyInstaller --onefile --windowed `
   run.py
 ```
 ビルド完了後、`dist/OmniShot.exe` が生成されます。
+
+### ⚠️ pywebview（ネイティブウィンドウ化）に関する注意点（Windows）
+
+- `pywebview`のWindows版バックエンドはEdge WebView2を使用するため、実行端末にWebView2 Runtimeが必要です（Windows 10 21H2以降・Windows 11には標準搭載）。古いWindows環境向けに配布する場合は、[Microsoft公式のWebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)の配布を検討してください。
+- Mac側の実ビルドでは追加の`--hidden-import`指定は不要でしたが、Windows側は未検証です。ビルド後に`OmniShot.exe`を起動し、ネイティブウィンドウが正しく開くか確認してください。
 
 ### ⚠️ Windowsで `.exe` を実行する際の注意点
 
