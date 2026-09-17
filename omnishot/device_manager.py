@@ -1,3 +1,4 @@
+# 仕様: docs/spec/screenshot-capture.md
 import atexit
 import os
 import platform
@@ -78,18 +79,9 @@ class DeviceManager:
                 return "ios", None  # タプルで返す
 
             elif device == "android":
+                # Androidは AndroidScreencapReceiver が `adb exec-out screencap` を
+                # 都度実行して取得するため、ここでの常駐プロセス起動は不要
                 add_log("🤖 Android ストリーム接続を開始します...")
-                subprocess.run([self.adb, "forward", "--remove-all"],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW)
-                subprocess.run([self.adb, "forward", "tcp:3333", "tcp:3333"],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW)
-
-                p = subprocess.Popen(
-                    [self.adb, "shell", "screenrecord", "--output-format=h264", "-"],
-                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                    startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW
-                )
-                self.processes.append(p)
                 return "android", None  # タプルで返す
 
         except Exception as e:
