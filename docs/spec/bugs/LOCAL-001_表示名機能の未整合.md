@@ -46,8 +46,9 @@
 - [static/js/main.js](../../../static/js/main.js) — 表示名編集ロジック（`startEditDisplayName`）、ダウンロード処理（`elDownloadBtn` のクリックハンドラ）
 - [omnishot/routes.py](../../../omnishot/routes.py) — `/rename`、`/images`、`/delete_selected`、`/download_selected` エンドポイント
 - [omnishot/display_names.py](../../../omnishot/display_names.py) — 表示名の永続化ストア（`captures/display_names.json`、ファイル名キー）
-- [README.md](../../../README.md) — 表示名編集・ZIPダウンロード機能を機能一覧に追記済み
+- [../gallery.md](../gallery.md) — 表示名編集・ZIPダウンロード機能の機能仕様
 
 ## 変更・追記理由（更新時のみ）
 - 2026-09-17: 初版作成。リポジトリ精査中に `/rename` エンドポイントの欠落と、ZIPダウンロード時の `nameMap`/`zipName` 未反映を発見し、issue番号はローカル管理番号（LOCAL-001）を採番して仕様化した。
 - 2026-09-17: 実装完了。`omnishot/display_names.py` を新設し、ファイル名をキーとする表示名を `captures/display_names.json` に永続化（`/rename`エンドポイント追加）。`/images` は `{images, displayNames}` 形式を返すよう変更し、フロントエンドの `localStorage` 依存を廃止してサーバーを唯一の情報源とした。`/download_selected` はクライアントの `nameMap` を信頼せず、サーバー側の永続化データからZIP内ファイル名を決定するよう変更（不正なZIPエントリ名・ダウンロードファイル名を避けるためのサニタイズ処理を追加）。`/delete_selected` は削除時に対応する表示名データも削除し、`clear_all` は `captures/` 全体を削除する既存動作により `display_names.json` も自動的に消える。受入基準1〜8を手動検証済み（開発サーバーを起動し、ダミーのcaptureファイルに対して `/images`・`/rename`・再起動後の永続化・`/download_selected`（表示名反映・zipNameフォールバック・混在選択）・`/delete_selected`・不正filename拒否・`/clear_all`・既存ルートの回帰を確認）。
+- 2026-09-17: README.md の機能一覧を `docs/spec/screenshot-capture.md` / `docs/spec/gallery.md` に分割したのに伴い、関連コンポーネントの参照先を README.md から `../gallery.md` に更新。
