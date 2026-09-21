@@ -36,6 +36,30 @@ def _shutdown_via_http():
         pass
 
 
+def _accept_first_mouse_on_macos():
+    """Macで、非アクティブなウィンドウへの最初のクリックを、ウィンドウの有効化だけに使わず画面にも渡す。
+
+    仕様: docs/spec/bugs/LOCAL-012_起動直後の最初のクリックが設定ガイドのタブに効かない.md
+    起動元のアプリ（ターミナル・IDE）がフォーカスを持つと、起動直後のウィンドウは非アクティブになり、
+    最初のクリックが有効化に消費されてページに届かない。WebViewの受け付け設定を変えて防ぐ。
+    """
+    if platform.system() != "Darwin":
+        return
+    try:
+        import objc
+        from webview.platforms import cocoa
+
+        def acceptsFirstMouse_(self, event):
+            return True
+
+        objc.classAddMethods(
+            cocoa.BrowserView.WebKitHost,
+            [objc.selector(acceptsFirstMouse_, signature=b'B@:@')],
+        )
+    except Exception as e:
+        add_log(f"⚠️ 最初のクリックを受け付ける設定に失敗しました: {e}")
+
+
 def _free_port():
     """前回の起動で残ったプロセスがポートを握っていた場合に備え、使用中のプロセスを終了する。"""
     try:
@@ -58,6 +82,7 @@ if __name__ == '__main__':
     ).start()
     _wait_for_server()
 
+    _accept_first_mouse_on_macos()
     window = webview.create_window("OmniShot", BASE_URL, width=1280, height=860)
     window.events.closing += _shutdown_via_http
     webview.start()

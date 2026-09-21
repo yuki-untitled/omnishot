@@ -39,7 +39,6 @@ const elTabAndroidBtn = document.getElementById('tabAndroidBtn');
 const elTabIosBtn = document.getElementById('tabIosBtn');
 const elGuideAndroid = document.getElementById('guideAndroid');
 const elGuideIos = document.getElementById('guideIos');
-const elSkipGuideCheck = document.getElementById('skipGuideCheck');
 const elCloseGuideBtn = document.getElementById('closeGuideBtn');
 const elOpenGuideBtn = document.getElementById('openGuideBtn');
 
@@ -504,12 +503,8 @@ document.addEventListener('keydown', (e) => {
 });
 
 // セットアップガイドの制御関係
-window.addEventListener('DOMContentLoaded', () => {
-    if (!localStorage.getItem('skipSetupGuide') && elGuideModal) {
-        elGuideModal.style.display = 'flex';
-    }
-});
-
+// 仕様: docs/spec/bugs/LOCAL-013_設定ガイドの次回から表示しないを廃止し起動時の自動表示をやめる.md
+// 起動時には自動表示せず、「設定ガイド」ボタンで開く。表示に関する保存データは持たない。
 elOpenGuideBtn.addEventListener('click', () => {
     if (elGuideModal) elGuideModal.style.display = 'flex';
 });
@@ -529,9 +524,6 @@ elTabIosBtn.addEventListener('click', () => {
 });
 
 elCloseGuideBtn.addEventListener('click', () => {
-    if (elSkipGuideCheck.checked) {
-        localStorage.setItem('skipSetupGuide', 'true');
-    }
     elGuideModal.style.display = 'none';
 });
 
