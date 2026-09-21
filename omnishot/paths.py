@@ -24,8 +24,7 @@ if getattr(sys, 'frozen', False):
     if "MacOS" in EXE_DIR:
         EXE_DIR = os.path.abspath(os.path.join(EXE_DIR, "../../../"))
 else:
-    # __file__ is omnishot/paths.py, so go up two levels to reach the repo root
-    # (one level was enough when this logic lived directly in the root app.py).
+    # __file__ is omnishot/paths.py, so go up two levels to reach the repo root.
     base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     EXE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

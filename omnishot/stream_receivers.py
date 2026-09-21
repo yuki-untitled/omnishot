@@ -10,16 +10,33 @@ import numpy as np
 from .logs import add_log
 
 
-class iOSStreamReceiver(threading.Thread):
-    """iOS専用:バックグラウンドで常にストリームを読み込み、常に最新の1コマだけを保持するクラス"""
-    def __init__(self, url):
+class _FrameReceiver(threading.Thread):
+    """常に最新の1コマだけを保持する受信スレッドの共通処理。"""
+    def __init__(self):
         super().__init__()
-        self.url = url
         self.latest_frame = None
         # 仕様: docs/spec/bugs/LOCAL-004_動的モードのフレーム重複による誤検知.md
         self.frame_seq = 0
         self.running = True
         self.daemon = True
+        self.last_error = None
+
+    def _publish(self, frame):
+        self.latest_frame = frame
+        self.frame_seq += 1
+
+    def stop(self):
+        self.running = False
+
+    def is_healthy(self):
+        return self.is_alive() and self.running
+
+
+class iOSStreamReceiver(_FrameReceiver):
+    """iOS専用:バックグラウンドで常にストリームを読み込み、常に最新の1コマだけを保持するクラス"""
+    def __init__(self, url):
+        super().__init__()
+        self.url = url
 
     def run(self):
         while self.running:
@@ -40,34 +57,22 @@ class iOSStreamReceiver(threading.Thread):
                                 bytes_data = bytes_data[b+2:]
                                 frame = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
                                 if frame is not None:
-                                    self.latest_frame = frame
-                                    self.frame_seq += 1
+                                    self._publish(frame)
                             else:
                                 break
             except Exception as e:
                 # 接続が切れたらエラーを記録し、runningをFalseにしてループを終了させる
                 add_log(f"⚠️ iOS device disconnected: {e}")
-                self.last_error = f"⚠️ iOSデバイスとの接続が切れました"
+                self.last_error = "⚠️ iOSデバイスとの接続が切れました"
                 self.running = False
                 break
 
-    def stop(self):
-        self.running = False
 
-    def is_healthy(self):
-        return self.is_alive() and self.running
-
-
-class AndroidScreencapReceiver(threading.Thread):
-    """Android専用：ADB経由でJPEGを連続キャプチャするクラス"""
+class AndroidScreencapReceiver(_FrameReceiver):
+    """Android専用：ADB経由でPNGを連続キャプチャするクラス"""
     def __init__(self, adb_path):
         super().__init__()
         self.adb = adb_path
-        self.latest_frame = None
-        # 仕様: docs/spec/bugs/LOCAL-004_動的モードのフレーム重複による誤検知.md
-        self.frame_seq = 0
-        self.running = True
-        self.daemon = True
 
     def run(self):
         while self.running:
@@ -76,17 +81,10 @@ class AndroidScreencapReceiver(threading.Thread):
                 if res.stdout:
                     frame = cv2.imdecode(np.frombuffer(res.stdout, dtype=np.uint8), cv2.IMREAD_COLOR)
                     if frame is not None:
-                        self.latest_frame = frame
-                        self.frame_seq += 1
+                        self._publish(frame)
             except Exception as e:
                 add_log(f"⚠️ Android device disconnected: {e}")
-                self.last_error = f"⚠️ Androidデバイスとの接続が切れました"
+                self.last_error = "⚠️ Androidデバイスとの接続が切れました"
                 self.running = False
                 break
             time.sleep(0.05)
-
-    def stop(self):
-        self.running = False
-
-    def is_healthy(self):
-        return self.is_alive() and self.running

@@ -36,7 +36,8 @@ def _shutdown_via_http():
         pass
 
 
-if __name__ == '__main__':
+def _free_port():
+    """前回の起動で残ったプロセスがポートを握っていた場合に備え、使用中のプロセスを終了する。"""
     try:
         if platform.system() == "Windows":
             subprocess.run('cmd /c "for /f \"tokens=5\" %a in (\'netstat -aon ^| findstr 5001\') do taskkill /f /pid %a"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=paths.CREATE_NO_WINDOW)
@@ -44,6 +45,10 @@ if __name__ == '__main__':
             subprocess.run("kill -9 $(lsof -t -i:5001)", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(0.3)
     except Exception: pass
+
+
+if __name__ == '__main__':
+    _free_port()
 
     add_log("🚀 OmniShot を起動中...")
     app = create_app()

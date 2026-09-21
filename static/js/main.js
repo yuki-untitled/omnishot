@@ -46,6 +46,21 @@ const elOpenGuideBtn = document.getElementById('openGuideBtn');
 // 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md
 // 表示名はサーバー側（/images のレスポンス）が唯一の情報源。localStorageには保存しない。
 
+// JSONをPOSTする共通ヘルパー
+function postJson(url, body) {
+    return fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+}
+
+// 撮影ステータス表示の切り替え
+function setStatus(isCapturing) {
+    elStatus.innerText = isCapturing ? "Status: Capturing..." : "Status: Idle";
+    elStatus.style.color = isCapturing ? "#2ecc71" : "#888";
+}
+
 // ==========================================================================
 // 2. ギャラリー & UI 制御関数
 // ==========================================================================
@@ -90,7 +105,7 @@ function refreshGalleryUI() {
         return sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b);
     });
 
-    const timestamp = new Date().getTime();
+    const timestamp = Date.now();
     elGallery.innerHTML = filteredImages.map(img => {
         const displayName = displayNames[img] || img.replace(/\.png$/i, '');
         const isSelected = selectedFiles.has(img);
@@ -134,17 +149,12 @@ function updateUI() {
 
 // モード選択に連動した設定欄のトグル制御
 function updateModeDisplay() {
-    const mode = elModeSelect.value;
+    const isStatic = elModeSelect.value === 'static';
     const staticLabel = document.getElementById('staticLabel');
     const dynamicLabel = document.getElementById('dynamicLabel');
-    
-    if (mode === 'static') {
-        if (staticLabel) staticLabel.style.display = 'inline';
-        if (dynamicLabel) dynamicLabel.style.display = 'none';
-    } else {
-        if (staticLabel) staticLabel.style.display = 'none';
-        if (dynamicLabel) dynamicLabel.style.display = 'inline';
-    }
+
+    if (staticLabel) staticLabel.style.display = isStatic ? 'inline' : 'none';
+    if (dynamicLabel) dynamicLabel.style.display = isStatic ? 'none' : 'inline';
 }
 
 // ステータスの監視とUI同期
@@ -155,9 +165,8 @@ setInterval(() => {
             const isCapturing = elStatus.innerText.includes("Capturing");
             
             if (isCapturing && !data.is_running) {
-                elStatus.innerText = "Status: Idle";
-                elStatus.style.color = "#888";
-                
+                setStatus(false);
+
                 // エラー理由があればそれを表示、なければ標準メッセージ
                 const message = data.error ? `${data.error}` : "自動撮影を停止しました。";
                 alert(message);
@@ -179,7 +188,7 @@ function showPreview() {
     if (allImages.length === 0) return;
     
     const img = allImages[currentPreviewIndex];
-    if (elPreviewImage) elPreviewImage.src = `/static/captures/${img}?t=${new Date().getTime()}`;
+    if (elPreviewImage) elPreviewImage.src = `/static/captures/${img}?t=${Date.now()}`;
     if (elPreviewInfo) elPreviewInfo.innerText = `${currentPreviewIndex + 1} / ${allImages.length} - ${img}`;
     if (elPreviewModal) elPreviewModal.style.display = 'flex';
 }
@@ -216,11 +225,7 @@ function deleteCurrentPreview() {
     const filename = allImages[currentPreviewIndex];
     if (!confirm(`${filename} を削除しますか？`)) return;
 
-    fetch('/delete_selected', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filenames: [filename] })
-    }).then(() => {
+    postJson('/delete_selected', { filenames: [filename] }).then(() => {
         // サーバーからデータ取得し直してUIを更新
         updateGallery();
         
@@ -260,9 +265,13 @@ function getClampedSettings() {
     return { interval, finalSettling, mode };
 }
 
-function sendSettings() {
+function settingsQuery() {
     const { interval, finalSettling, mode } = getClampedSettings();
-    fetch(`/update_settings?interval=${interval}&settling=${finalSettling}&mode=${mode}`);
+    return `interval=${interval}&settling=${finalSettling}&mode=${mode}`;
+}
+
+function sendSettings() {
+    fetch(`/update_settings?${settingsQuery()}`);
 }
 
 
@@ -316,11 +325,8 @@ function startEditDisplayName(spanEl, filename) {
                 delete displayNames[filename];
             }
 
-            fetch('/rename', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename: filename, displayName: cleanInputBase })
-            }).catch(err => console.error("Rename error:", err));
+            postJson('/rename', { filename: filename, displayName: cleanInputBase })
+                .catch(err => console.error("Rename error:", err));
 
             refreshGalleryUI();
         } else {
@@ -388,20 +394,13 @@ function startLogStream() {
 
 // 自動撮影コントロール系
 elStartBtn.addEventListener('click', () => {
-    const { interval, finalSettling, mode } = getClampedSettings();
-    fetch(`/start?interval=${interval}&settling=${finalSettling}&mode=${mode}`)
-        .then(() => {
-            elStatus.innerText = "Status: Capturing...";
-            elStatus.style.color = "#2ecc71";
-        });
+    fetch(`/start?${settingsQuery()}`)
+        .then(() => setStatus(true));
 });
 
 elStopBtn.addEventListener('click', () => {
     fetch('/stop')
-        .then(() => {
-            elStatus.innerText = "Status: Idle";
-            elStatus.style.color = "#888";
-        });
+        .then(() => setStatus(false));
 });
 
 // 各設定入力欄のリアルタイム同期
@@ -443,11 +442,7 @@ elDeleteSelectedBtn.addEventListener('click', () => {
         : `${selectedFiles.size}件の画像を削除しますか？`;
     
     if (confirm(message)) {
-        fetch('/delete_selected', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filenames: Array.from(selectedFiles) })
-        }).then(() => {
+        postJson('/delete_selected', { filenames: Array.from(selectedFiles) }).then(() => {
             selectedFiles.clear();
             updateUI();
         });
@@ -475,11 +470,7 @@ elDownloadBtn.addEventListener('click', () => {
 
     // 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md
     // ZIP内のファイル名はサーバー側に永続化された表示名を使って決定するため、ここでは送らない
-    fetch('/download_selected', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filenames: selectedArray, zipName: zipFilename })
-    })
+    postJson('/download_selected', { filenames: selectedArray, zipName: zipFilename })
     .then(res => res.blob())
     .then(blob => {
         const url = window.URL.createObjectURL(blob);

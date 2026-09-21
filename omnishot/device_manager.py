@@ -8,8 +8,6 @@ import time
 from . import paths
 from .logs import add_log
 
-CREATE_NO_WINDOW = paths.CREATE_NO_WINDOW
-
 
 class DeviceManager:
     def __init__(self):
@@ -33,7 +31,7 @@ class DeviceManager:
         # 1. Android判定
         try:
             # サーバー起動を待つためタイムアウトを 5.0秒 に
-            res = subprocess.run([self.adb, "devices"], capture_output=True, text=True, timeout=5.0, creationflags=CREATE_NO_WINDOW)
+            res = subprocess.run([self.adb, "devices"], capture_output=True, text=True, timeout=5.0, creationflags=paths.CREATE_NO_WINDOW)
             lines = res.stdout.strip().split('\n')
             # 2行目以降のデバイスリストをチェック
             for line in lines[1:]:
@@ -45,11 +43,11 @@ class DeviceManager:
 
         # 2. iOS判定 (結果が空リストでないことを厳密に確認)
         try:
-            res = subprocess.run([self.ios, "list"], capture_output=True, text=True, timeout=1.0, creationflags=CREATE_NO_WINDOW)
+            res = subprocess.run([self.ios, "list"], capture_output=True, text=True, timeout=1.0, creationflags=paths.CREATE_NO_WINDOW)
             # JSONが空ではない、かつリストの中身があるか確認
             if "deviceList" in res.stdout and '[]' not in res.stdout:
                 found_devices.append("ios")
-        except: pass
+        except Exception: pass
 
         return found_devices
 
@@ -73,7 +71,7 @@ class DeviceManager:
                 env = os.environ.copy()
                 env["ENABLE_GO_IOS_AGENT"] = "user"
                 p = subprocess.Popen([self.ios, "screenshot", "--stream", "--port=3333"],
-                    env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW
+                    env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, startupinfo=startupinfo, creationflags=paths.CREATE_NO_WINDOW
                 )
                 self.processes.append(p)
                 time.sleep(1.5)
@@ -100,7 +98,7 @@ class DeviceManager:
             try:
                 p.terminate()
                 p.wait(timeout=1)
-            except:
+            except Exception:
                 pass
         self.processes.clear()
 

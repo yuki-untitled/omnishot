@@ -55,6 +55,39 @@ def _sanitize_zip_name(name):
     return cleaned
 
 
+def _apply_config_from_args():
+    """クエリ文字列の撮影設定を state.current_config に反映する。"""
+    state.current_config["prefix"] = request.args.get('prefix', '')
+    state.current_config["interval"] = float(request.args.get('interval', 0.2))
+    state.current_config["settling"] = float(request.args.get('settling', 0.4))
+    state.current_config["mode"] = request.args.get('mode', 'static')
+
+
+def _sse_event(log_id, msg):
+    safe_msg = msg.replace('\n', '\ndata: ')
+    return f"id: {log_id}\ndata: {safe_msg}\n\n"
+
+
+def _cleanup_temp_data():
+    """終了時に、撮影データの保存先とiOS/Windowsの一時ファイルを削除する。"""
+    # 1. 保存フォルダの削除
+    if os.path.exists(SAVE_DIR):
+        shutil.rmtree(SAVE_DIR)
+
+    # 2. iOSキャッシュ（selfidentity.plist）の削除
+    home = os.path.expanduser("~")
+    plist_path = os.path.join(home, "Library/Preferences/com.apple.selfidentity.plist")
+    if os.path.exists(plist_path):
+        os.remove(plist_path)
+
+    # 3. Windows一時ファイルの削除（該当する場合）
+    if platform.system() == "Windows":
+        tmp = tempfile.gettempdir()
+        for item in os.listdir(tmp):
+            if "ios" in item or "adb" in item:
+                shutil.rmtree(os.path.join(tmp, item), ignore_errors=True)
+
+
 def register(app):
     @app.route('/')
     def index():
@@ -74,10 +107,7 @@ def register(app):
 
     @app.route('/start')
     def start():
-        state.current_config["prefix"] = request.args.get('prefix', '')
-        state.current_config["interval"] = float(request.args.get('interval', 0.2))
-        state.current_config["settling"] = float(request.args.get('settling', 0.4))
-        state.current_config["mode"] = request.args.get('mode', 'static')
+        _apply_config_from_args()
 
         if not state.is_running:
             state.is_running = True
@@ -102,23 +132,7 @@ def register(app):
         def kill_process():
             time.sleep(0.5)
             try:
-                # 1. 保存フォルダの削除
-                if os.path.exists(SAVE_DIR):
-                    shutil.rmtree(SAVE_DIR)
-
-                # 2. iOSキャッシュ（selfidentity.plist）の削除
-                home = os.path.expanduser("~")
-                plist_path = os.path.join(home, "Library/Preferences/com.apple.selfidentity.plist")
-                if os.path.exists(plist_path):
-                    os.remove(plist_path)
-
-                # 3. Windows一時ファイルの削除（該当する場合）
-                if platform.system() == "Windows":
-                    tmp = tempfile.gettempdir()
-                    for item in os.listdir(tmp):
-                        if "ios" in item or "adb" in item:
-                            shutil.rmtree(os.path.join(tmp, item), ignore_errors=True)
-
+                _cleanup_temp_data()
                 print("🧹 終了処理が完了しました。")
             except Exception as e:
                 print(f"⚠️ クリーンアップ中にエラーが発生しました: {e}")
@@ -159,10 +173,7 @@ def register(app):
 
     @app.route('/update_settings')
     def update_settings():
-        state.current_config["interval"] = float(request.args.get('interval', 0.2))
-        state.current_config["settling"] = float(request.args.get('settling', 0.4))
-        state.current_config["prefix"] = request.args.get('prefix', '')
-        state.current_config["mode"] = request.args.get('mode', 'static')
+        _apply_config_from_args()
         add_log(f"📋 設定更新: {state.current_config}")
         return "Updated"
 
@@ -174,16 +185,14 @@ def register(app):
             with log_condition:
                 current_items = [item for item in log_queue if item[0] > last_sent_id]
             for log_id, msg in current_items:
-                safe_msg = msg.replace('\n', '\ndata: ')
-                yield f"id: {log_id}\ndata: {safe_msg}\n\n"
+                yield _sse_event(log_id, msg)
                 last_sent_id = log_id
             while True:
                 with log_condition:
                     log_condition.wait()
                     new_items = [item for item in log_queue if item[0] > last_sent_id]
                 for log_id, msg in new_items:
-                    safe_msg = msg.replace('\n', '\ndata: ')
-                    yield f"id: {log_id}\ndata: {safe_msg}\n\n"
+                    yield _sse_event(log_id, msg)
                     last_sent_id = log_id
         return Response(event_stream(last_sent_id), mimetype='text/event-stream; charset=utf-8')
 

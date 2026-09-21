@@ -12,6 +12,38 @@ from .paths import SAVE_DIR
 from .stream_receivers import AndroidScreencapReceiver, iOSStreamReceiver
 
 
+DEVICE_LABELS = {"ios": "iOS", "android": "Android"}
+
+
+def _create_receiver(device_type):
+    if device_type == "android":
+        return AndroidScreencapReceiver(dev_manager.adb)
+    return iOSStreamReceiver("http://127.0.0.1:3333")
+
+
+def _save_frame(frame, device_type, prefix):
+    """フレームをキャプチャ保存先へPNGとして保存し、保存したファイル名を返す。"""
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    device_label = DEVICE_LABELS.get(device_type.lower(), device_type.capitalize())
+    final_name = f"{prefix}_{device_label}_{timestamp}.png" if prefix else f"{device_label}_{timestamp}.png"
+    cv2.imwrite(os.path.join(SAVE_DIR, final_name), frame)
+    add_log(f"📸 撮影完了: {final_name}")
+    return final_name
+
+
+def _set_baseline(frame):
+    """撮影直後のフレームを変化検知の基準にする。"""
+    state.last_frame_data = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+
+def _discard_frames(receiver, count):
+    """受信バッファを捨てながら待つ（撮影直後のフレームを判定に使わないため）。"""
+    for _ in range(count):
+        if not state.is_running: break
+        receiver.latest_frame = None
+        time.sleep(0.05)
+
+
 def process_frame_changed(frame, is_static_mode=False):
     if frame is None: return False
 
@@ -57,11 +89,7 @@ def auto_capture_loop():
     stable_count = 0
     already_captured = False
 
-    if device_type == "android":
-        receiver = AndroidScreencapReceiver(dev_manager.adb)
-    else:
-        receiver = iOSStreamReceiver("http://127.0.0.1:3333")
-
+    receiver = _create_receiver(device_type)
     receiver.start()
     time.sleep(0.5)
     last_frame_seq = None
@@ -108,29 +136,16 @@ def auto_capture_loop():
                 if state.is_running:
                     # 待機が明けた「その瞬間」の最新フレームを再度取得して保存
                     final_frame = receiver.latest_frame if receiver.latest_frame is not None else frame
-                    timestamp = time.strftime("%Y%m%d_%H%M%S")
-
-                    device_label = device_type.capitalize() # ios -> Ios となるため、以下の微調整を推奨
-                    if device_type.lower() == 'ios': device_label = 'iOS'
-                    elif device_type.lower() == 'android': device_label = 'Android'
-                    final_name = f"{conf['prefix']}_{device_label}_{timestamp}.png" if conf['prefix'] else f"{device_label}_{timestamp}.png"
-
-                    dest_path = os.path.join(SAVE_DIR, final_name)
-
-                    cv2.imwrite(dest_path, final_frame)
-                    add_log(f"📸 撮影完了: {final_name}")
+                    _save_frame(final_frame, device_type, conf['prefix'])
 
                     # 撮影直後の状態を基準にする
-                    state.last_frame_data = cv2.cvtColor(final_frame, cv2.COLOR_BGR2GRAY)
+                    _set_baseline(final_frame)
 
                     # 判定履歴をリセットして、連続撮影を防止する
                     state.score_history.clear()
 
                     # 撮影直後のフレームをスキップして、判定を安定させる
-                    for _ in range(10):
-                        if not state.is_running: break
-                        receiver.latest_frame = None
-                        time.sleep(0.05)
+                    _discard_frames(receiver, 10)
 
         # ==========================================
         # 🔵 動的モードの仕様
@@ -156,30 +171,17 @@ def auto_capture_loop():
                     # 指定された秒数（回数）ずっと静止し続けた瞬間
                     if stable_count >= frames_needed:
                         if state.is_running:
-                            timestamp = time.strftime("%Y%m%d_%H%M%S")
-
-                            device_label = device_type.capitalize()
-                            if device_type.lower() == 'ios': device_label = 'iOS'
-                            elif device_type.lower() == 'android': device_label = 'Android'
-                            final_name = f"{conf['prefix']}_{device_label}_{timestamp}.png" if conf['prefix'] else f"{device_label}_{timestamp}.png"
-
-                            dest_path = os.path.join(SAVE_DIR, final_name)
-
-                            cv2.imwrite(dest_path, frame)
-                            add_log(f"📸 撮影完了: {final_name}")
+                            _save_frame(frame, device_type, conf['prefix'])
 
                             # 撮影後のクールダウン（判定ロジックを強制リセット）
                             already_captured = True
                             stable_count = 0
 
                             # ここで現在のフレームを基準に上書きし、変化検知を「なし」からスタートさせる
-                            state.last_frame_data = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                            _set_baseline(frame)
 
-                            # 【改善】sleepの代わりに、受信バッファを空にする（捨ててから次に進む）
-                            for _ in range(20): # 少し多めに回す
-                                if not state.is_running: break
-                                receiver.latest_frame = None
-                                time.sleep(0.05) # 合計1秒分を「受信待ち」で潰す
+                            # 受信バッファを空にする（合計1秒分を「受信待ち」で潰す）
+                            _discard_frames(receiver, 20)
 
         elapsed = time.time() - start_time
         sleep_time = max(0.01, conf["interval"] - elapsed)
