@@ -363,7 +363,8 @@ function appendLog(message) {
         logMessages.shift();
     }
     if (elLogConsole) {
-        elLogConsole.innerHTML = logMessages.slice().reverse().map(msg => `<div>${msg}</div>`).join('');
+        // 仕様: docs/spec/bugs/LOCAL-010_ログ表示にHTMLを含む文字列がそのまま解釈される.md
+        elLogConsole.innerHTML = logMessages.slice().reverse().map(msg => `<div>${escapeHtml(msg)}</div>`).join('');
     }
 }
 
@@ -548,7 +549,8 @@ window.shutdownApp = function() {
     if (confirm("アプリケーションを終了しますか？\n（サーバーが停止し、この画面は使えなくなります）")) {
         fetch('/shutdown', { method: 'POST' })
             .then(() => {
-                alert("アプリケーションを終了しました。このタブを閉じてもらって大丈夫です。");
+                // 仕様: docs/spec/bugs/LOCAL-011_アプリ終了時のメッセージがブラウザのタブ前提のまま.md
+                alert("アプリケーションを終了しました。");
                 window.close();
             })
             .catch(err => console.error("Shutdown error:", err));

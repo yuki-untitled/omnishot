@@ -22,6 +22,20 @@ def _sanitize_filename_component(name):
     return re.sub(r'[\\/\x00-\x1f]', '', name or '').strip()
 
 
+# 仕様: docs/spec/bugs/LOCAL-009_一括削除・ZIPダウンロードがキャプチャ保存先の外のファイルを扱える.md
+def _is_plain_filename(name):
+    """保存先フォルダ直下の単純なファイル名（ディレクトリ区切り・制御文字を含まない）かどうか。"""
+    return (
+        isinstance(name, str)
+        and name not in ('', '.', '..')
+        and not re.search(r'[\\/\x00-\x1f]', name)
+    )
+
+
+def _all_plain_filenames(filenames):
+    return isinstance(filenames, list) and all(_is_plain_filename(n) for n in filenames)
+
+
 def _arcname_for(filename, display_name):
     """ZIP内のファイル名を決定する。表示名が未設定ならキャプチャの元ファイル名を使う。"""
     if not display_name:
@@ -195,8 +209,12 @@ def register(app):
 
     @app.route('/delete_selected', methods=['POST'])
     def delete_selected():
-        data = request.json
+        data = request.json or {}
         filenames = data.get('filenames', [])
+        # 仕様: docs/spec/bugs/LOCAL-009_一括削除・ZIPダウンロードがキャプチャ保存先の外のファイルを扱える.md
+        # 1件でも不正な名前を含む場合は、何も削除せずリクエスト全体を拒否する
+        if not _all_plain_filenames(filenames):
+            return "Invalid filename", 400
         for name in filenames:
             path = os.path.join(SAVE_DIR, name)
             if os.path.exists(path): os.remove(path)
@@ -208,9 +226,12 @@ def register(app):
     # 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md
     @app.route('/download_selected', methods=['POST'])
     def download_selected():
-        data = request.json
+        data = request.json or {}
         filenames = data.get('filenames', [])
         if not filenames: return "No files selected", 400
+        # 仕様: docs/spec/bugs/LOCAL-009_一括削除・ZIPダウンロードがキャプチャ保存先の外のファイルを扱える.md
+        if not _all_plain_filenames(filenames):
+            return "Invalid filename", 400
 
         names = display_names.load_all()
         memory_file = io.BytesIO()

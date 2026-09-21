@@ -58,10 +58,11 @@ class DeviceManager:
         device_list = self.detect_device()
         startupinfo = paths.get_startupinfo()
 
+        # 仕様: docs/spec/bugs/LOCAL-008_起動直後の端末未検出リトライ成功時に撮影開始が失敗する.md
         if not device_list:
             time.sleep(1.0)
-            devices = self.detect_device()
-            if not devices:
+            device_list = self.detect_device()
+            if not device_list:
                 return None, "❌ デバイスが検出されませんでした。ケーブルを確認してください。"
 
         device = device_list[0]  # 最初のデバイスを優先して使用
