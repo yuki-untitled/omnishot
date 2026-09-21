@@ -15,9 +15,9 @@ from .stream_receivers import AndroidScreencapReceiver, iOSStreamReceiver
 DEVICE_LABELS = {"ios": "iOS", "android": "Android"}
 
 
-def _create_receiver(device_type):
-    if device_type == "android":
-        return AndroidScreencapReceiver(dev_manager.adb)
+def _create_receiver(device):
+    if device["os"] == "android":
+        return AndroidScreencapReceiver(dev_manager.adb, device["id"])
     return iOSStreamReceiver("http://127.0.0.1:3333")
 
 
@@ -78,8 +78,8 @@ def process_frame_changed(frame, is_static_mode=False):
 def auto_capture_loop():
     state.last_error = None
 
-    device_type, error_msg = dev_manager.start_stream()
-    if not device_type:
+    device, error_msg = dev_manager.start_stream(state.current_config["device"])
+    if not device:
         state.last_error = error_msg
         add_log(f"{error_msg}")
         state.is_running = False
@@ -89,7 +89,8 @@ def auto_capture_loop():
     stable_count = 0
     already_captured = False
 
-    receiver = _create_receiver(device_type)
+    device_type = device["os"]
+    receiver = _create_receiver(device)
     receiver.start()
     time.sleep(0.5)
     last_frame_seq = None

@@ -15,4 +15,6 @@ current_config = {
     "settling": 0.4,
     "prefix": "",
     "mode": "static",
+    # 仕様: docs/spec/device-selection.md（撮影する端末の識別子。空なら端末が1台のときだけ自動で使う）
+    "device": "",
 }

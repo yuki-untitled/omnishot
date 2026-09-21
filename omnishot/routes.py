@@ -105,9 +105,15 @@ def register(app):
             "mode": state.current_config["mode"],
         })
 
+    # 仕様: docs/spec/device-selection.md
+    @app.route('/devices')
+    def get_devices():
+        return jsonify(dev_manager.list_devices())
+
     @app.route('/start')
     def start():
         _apply_config_from_args()
+        state.current_config["device"] = request.args.get('device', '')
 
         if not state.is_running:
             state.is_running = True

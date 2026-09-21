@@ -13,6 +13,7 @@ OmniShot は、iOS および Android 端末の画面変化を検知し、自動�
 詳細な機能仕様は以下を参照してください。
 
 * [docs/spec/screenshot-capture.md](docs/spec/screenshot-capture.md) — 自動スクリーンショットキャプチャ
+* [docs/spec/device-selection.md](docs/spec/device-selection.md) — 撮影端末の選択
 * [docs/spec/gallery.md](docs/spec/gallery.md) — Web UI ギャラリー・表示名編集
 * [docs/spec/native-window.md](docs/spec/native-window.md) — ネイティブウィンドウ化
 

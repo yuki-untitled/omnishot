@@ -7,6 +7,9 @@ let selectedFiles = new Set();
 let allImages = [];
 let currentPreviewIndex = 0;
 let displayNames = {};
+let devices = [];
+let isCapturing = false;
+let isLoadingDevices = false;
 
 // DOM要素をキャッシュ（高速化のため一度だけ取得）
 const elStartBtn = document.getElementById('startBtn');
@@ -15,6 +18,8 @@ const elCheckInterval = document.getElementById('checkInterval');
 const elSettlingTime = document.getElementById('settlingTime');
 const elJudgeCount = document.getElementById('judgeCount');
 const elModeSelect = document.getElementById('modeSelect');
+const elDeviceSelect = document.getElementById('deviceSelect');
+const elRefreshDevicesBtn = document.getElementById('refreshDevicesBtn');
 const elDeviceFilter = document.getElementById('deviceFilter');
 const elSortSelect = document.getElementById('sortSelect');
 const elStatus = document.getElementById('status');
@@ -55,9 +60,97 @@ function postJson(url, body) {
 }
 
 // 撮影ステータス表示の切り替え
-function setStatus(isCapturing) {
-    elStatus.innerText = isCapturing ? "Status: Capturing..." : "Status: Idle";
-    elStatus.style.color = isCapturing ? "#2ecc71" : "#888";
+function setStatus(capturing) {
+    isCapturing = capturing;
+    elStatus.innerText = capturing ? "Status: Capturing..." : "Status: Idle";
+    elStatus.style.color = capturing ? "#2ecc71" : "#888";
+    updateDeviceControls();
+}
+
+// ==========================================================================
+// 撮影端末の選択
+// 仕様: docs/spec/device-selection.md
+// 選択状態は保存しない（画面上のプルダウンの値のみ）。
+// ==========================================================================
+const DEVICE_OS_GROUPS = [
+    { os: 'ios', label: 'iOS' },
+    { os: 'android', label: 'Android' },
+];
+
+// 「OS・端末名・識別子の末尾6文字」。識別子は、機種ごとに共通になりやすい先頭ではなく末尾を使う
+function deviceLabel(device) {
+    const osLabel = device.os === 'ios' ? 'iOS' : 'Android';
+    const shortId = device.id.slice(-6);
+    return device.name ? `${osLabel}・${device.name}・${shortId}` : `${osLabel}・${shortId}`;
+}
+
+// 撮影中・検出中は、端末の選択と更新を操作できない
+function updateDeviceControls() {
+    const disabled = isCapturing || isLoadingDevices;
+    elDeviceSelect.disabled = disabled;
+    elRefreshDevicesBtn.disabled = disabled;
+}
+
+function renderDevices(previousId) {
+    elDeviceSelect.innerHTML = '';
+    const addOption = (value, text) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = text;
+        elDeviceSelect.appendChild(option);
+    };
+
+    if (devices.length === 0) {
+        addOption('', '端末が見つかりません');
+        elDeviceSelect.value = '';
+        return;
+    }
+    if (devices.length === 1) {
+        addOption(devices[0].id, deviceLabel(devices[0]));
+    } else {
+        // 2台以上は OS ごとに見出しを付けてまとめる。端末が無い OS の見出しは出さない
+        addOption('', '端末を選択してください');
+        DEVICE_OS_GROUPS.forEach(({ os, label }) => {
+            const inGroup = devices.filter(device => device.os === os);
+            if (inGroup.length === 0) return;
+            const group = document.createElement('optgroup');
+            group.label = `-- ${label} --`;
+            inGroup.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.id;
+                option.textContent = deviceLabel(device);
+                group.appendChild(option);
+            });
+            elDeviceSelect.appendChild(group);
+        });
+    }
+
+    // 1台なら自動で選ぶ。2台以上は、更新前の選択が一覧に残っていれば維持し、無ければ未選択にする
+    const keep = devices.some(device => device.id === previousId) ? previousId : '';
+    elDeviceSelect.value = devices.length === 1 ? devices[0].id : keep;
+}
+
+function loadDevices() {
+    const previousId = elDeviceSelect.value;
+    isLoadingDevices = true;
+    updateDeviceControls();
+    elDeviceSelect.innerHTML = '<option value="">検出中...</option>';
+
+    return fetch('/devices')
+        .then(res => res.json())
+        .then(list => {
+            devices = list;
+            renderDevices(previousId);
+        })
+        .catch(err => {
+            console.error("Device list error:", err);
+            devices = [];
+            renderDevices('');
+        })
+        .finally(() => {
+            isLoadingDevices = false;
+            updateDeviceControls();
+        });
 }
 
 // ==========================================================================
@@ -161,8 +254,6 @@ setInterval(() => {
     fetch('/status')
         .then(res => res.json())
         .then(data => {
-            const isCapturing = elStatus.innerText.includes("Capturing");
-            
             if (isCapturing && !data.is_running) {
                 setStatus(false);
 
@@ -393,9 +484,16 @@ function startLogStream() {
 
 // 自動撮影コントロール系
 elStartBtn.addEventListener('click', () => {
-    fetch(`/start?${settingsQuery()}`)
+    // 仕様: docs/spec/device-selection.md
+    if (devices.length >= 2 && !elDeviceSelect.value) {
+        alert("撮影する端末を選択してください");
+        return;
+    }
+    fetch(`/start?${settingsQuery()}&device=${encodeURIComponent(elDeviceSelect.value)}`)
         .then(() => setStatus(true));
 });
+
+elRefreshDevicesBtn.addEventListener('click', loadDevices);
 
 elStopBtn.addEventListener('click', () => {
     fetch('/stop')
@@ -558,3 +656,4 @@ function escapeHtml(str) {
 updateModeDisplay();
 updateGallery();
 startLogStream();
+loadDevices();

@@ -70,14 +70,17 @@ class iOSStreamReceiver(_FrameReceiver):
 
 class AndroidScreencapReceiver(_FrameReceiver):
     """Android専用：ADB経由でPNGを連続キャプチャするクラス"""
-    def __init__(self, adb_path):
+    def __init__(self, adb_path, serial=None):
         super().__init__()
         self.adb = adb_path
+        # 仕様: docs/spec/device-selection.md（複数接続時は選択した端末を指定する）
+        self.serial = serial
 
     def run(self):
         while self.running:
             try:
-                res = subprocess.run([self.adb, "exec-out", "screencap", "-p"], capture_output=True, check=True)
+                cmd = [self.adb] + (["-s", self.serial] if self.serial else []) + ["exec-out", "screencap", "-p"]
+                res = subprocess.run(cmd, capture_output=True, check=True)
                 if res.stdout:
                     frame = cv2.imdecode(np.frombuffer(res.stdout, dtype=np.uint8), cv2.IMREAD_COLOR)
                     if frame is not None:

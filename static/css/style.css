@@ -129,11 +129,141 @@ input[type="number"] {
 }
 
 #status {
-    display: inline-block;
-    margin-left: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 14px;
+    border: 1px solid #333;
+    border-radius: 18px;
+    background: #1a1a1a;
     font-weight: bold;
-    font-size: 14px;
+    font-size: 13px;
     white-space: nowrap;
+}
+
+/* 状態の丸印。色は文字色（JSが撮影中は緑、停止中は灰色に切り替える）に合わせる */
+#status::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+
+/* ==========================================================================
+   3-2. 撮影の設定パネル
+   仕様: docs/spec/device-selection.md#実現内容what
+   ========================================================================== */
+.control-panel {
+    display: grid;
+    gap: 12px;
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    border: 1px solid #2c2c2c;
+    border-radius: 8px;
+    background: #202020;
+}
+
+/* 1行目: 撮影の条件。3項目を同じ幅で並べる */
+.control-row-conditions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+/* 2行目: 撮影の対象と操作。端末のプルダウンが余りの幅を使う */
+.control-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px;
+}
+
+.field {
+    display: block;
+    min-width: 0;
+}
+
+/* 端末のプルダウンは横に伸びすぎないよう、1行目の1項目と同じ幅を上限にする（狭い画面では240px） */
+.field-device {
+    flex: 1 1 240px;
+    max-width: max(240px, calc((100% - 24px) / 3));
+}
+
+/* 撮影の操作（開始・停止・ステータス）をひとまとまりにして行の右端へ寄せる。折り返したときも右寄せのまま */
+.action-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+}
+
+.field-caption {
+    display: block;
+    margin-bottom: 4px;
+    color: #9a9a9a;
+    font-size: 12px;
+}
+
+/* 単位（s・回）を入力欄の枠の内側の右端に置く。枠は .input-unit が持ち、中の input は枠なしにする */
+.input-unit {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    background: #252525;
+}
+
+.input-unit:focus-within {
+    border-color: #2ecc71;
+}
+
+.control-panel select {
+    width: 100%;
+    height: 36px;
+    padding: 0 10px;
+    font-size: 14px;
+}
+
+.control-panel .input-unit input {
+    flex: 1 1 auto;
+    width: auto;
+    height: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    outline: none;
+}
+
+.control-panel .unit {
+    flex: 0 0 auto;
+    color: #9a9a9a;
+    font-size: 13px;
+}
+
+.control-panel .btn {
+    height: 36px;
+    padding: 0 16px;
+}
+
+.btn-refresh {
+    /* 「端末の選択」と「撮影の操作」を区切るため、次のボタンとの間隔を広げる */
+    margin-right: 30px;
+    background: #555;
+    color: #fff;
+}
+
+.control-panel input:disabled,
+.control-panel select:disabled,
+.control-panel .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 
@@ -386,7 +516,7 @@ input[type="number"] {
     .header-top { flex-wrap: wrap; gap: 8px; }
     .header-top h1 { font-size: 1.25rem; }
     .header-actions { width: 100%; justify-content: center; gap: 5px; }
-    .header-note { font-size: 11px; }
+    .header-note { font-size: 11px; white-space: normal; text-align: center; }
     .controls { gap: 5px; margin: 6px 0; }
     .controls label { gap: 3px; font-size: 12px; }
     input, select { padding: 5px; font-size: 12px; }
