@@ -97,6 +97,24 @@ body {
     color: #fff;
 }
 
+.header-help:hover {
+    background: #666;
+}
+
+.header-guide:hover {
+    background: #555;
+}
+
+/* 設定ガイドの OS の切り替え。選んでいる方を緑にする */
+.btn.guide-tab {
+    flex: 1;
+    background: #555;
+}
+
+.btn.guide-tab.active {
+    background: #2ecc71;
+}
+
 .header-exit {
     background-color: #dc3545;
     color: white;

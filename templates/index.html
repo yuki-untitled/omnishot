@@ -15,8 +15,8 @@
             <p style="font-size: 14px; color: #bbb;">本アプリを使用するには、接続するスマートフォン側で以下の「開発者向け設定」を有効にする必要があります。</p>
             
             <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                <button id="tabIosBtn" class="btn start" style="flex: 1;">🍏 iPhone (iOS) の設定</button>
-                <button id="tabAndroidBtn" class="btn" style="flex: 1; background: #555;">🤖 Android の設定</button>
+                <button id="tabIosBtn" class="btn start guide-tab active">🍏 iPhone (iOS) の設定</button>
+                <button id="tabAndroidBtn" class="btn guide-tab">🤖 Android の設定</button>
             </div>
 
             <div id="guideIos" style="font-size: 14px; line-height: 1.6;">
@@ -52,9 +52,9 @@
         <div class="header-top">
             <h1><img src="{{ url_for('static', filename='app-icon.png') }}" alt="" class="app-icon"> OmniShot</h1>
             <div class="header-actions">
-                <a href="{{ url_for('help_page') }}" class="btn header-btn header-help" onmouseover="this.style.background='#666'" onmouseout="this.style.background='#555'">ℹ️ 使い方</a>
-                <button id="openGuideBtn" class="btn header-btn header-guide" onmouseover="this.style.background='#555'" onmouseout="this.style.background='#444'">❓ 設定ガイド</button>
-                <button class="btn btn-danger header-btn header-exit" onclick="shutdownApp()">🛑 アプリ終了</button>
+                <a href="{{ url_for('help_page') }}" class="btn header-btn header-help">ℹ️ 使い方</a>
+                <button id="openGuideBtn" class="btn header-btn header-guide">❓ 設定ガイド</button>
+                <button id="shutdownBtn" class="btn btn-danger header-btn header-exit">🛑 アプリ終了</button>
             </div>
         </div>
         
@@ -142,8 +142,8 @@
             <img id="previewImage" src="" alt="Preview">
             
             <div class="preview-actions-corner">
-                <button onclick="downloadCurrentPreview()" class="action-btn download-btn" title="ダウンロード">📥</button>
-                <button onclick="deleteCurrentPreview()" class="action-btn delete-btn" title="削除">🗑️</button>
+                <button id="previewDownloadBtn" class="action-btn download-btn" title="ダウンロード">📥</button>
+                <button id="previewDeleteBtn" class="action-btn delete-btn" title="削除">🗑️</button>
             </div>
 
             <button id="nextBtn" class="nav-btn next-btn">&#10095;</button>
@@ -151,6 +151,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>
