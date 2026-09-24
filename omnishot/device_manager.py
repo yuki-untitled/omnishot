@@ -33,10 +33,26 @@ ANDROID_STATE_HINTS = {
 IOS_STREAM_PORT = 3333
 
 
-def _run(cmd, timeout, env=None, text=False):
+def _run(cmd, timeout, env=None, text=False, cwd=None):
     """コンソールウィンドウを出さずにコマンドを実行し、出力を受け取る。"""
-    return subprocess.run(cmd, env=env, capture_output=True, text=text, timeout=timeout,
+    return subprocess.run(cmd, env=env, cwd=cwd, capture_output=True, text=text, timeout=timeout,
                           creationflags=paths.CREATE_NO_WINDOW)
+
+
+def _go_ios_cwd():
+    """go-ios を呼び出すときの作業フォルダ（無ければ作る）。
+
+    仕様: docs/spec/bugs/LOCAL-032_アプリ化するとiOSのトンネルが起動できずトンネルの起動が連鎖し続ける.md
+    go-ios はトンネル用の識別情報（selfIdentity.plist）を作業フォルダに作る。書き込めないとトンネルが起動できず、
+    起動されたトンネルが次のトンネルを起動して連鎖するため、どこから起動しても書き込めるフォルダにする。
+    """
+    os.makedirs(paths.GO_IOS_WORK_DIR, exist_ok=True)
+    return paths.GO_IOS_WORK_DIR
+
+
+def _run_go_ios(cmd, timeout, env=None, text=False):
+    """go-ios のコマンドを、作業フォルダを固定して実行する。"""
+    return _run(cmd, timeout, env=env, text=text, cwd=_go_ios_cwd())
 
 
 def _go_ios_env(agent=True):
@@ -222,7 +238,7 @@ class DeviceManager:
     def _list_ios_devices(self):
         devices = []
         try:
-            res = _run([self.ios, "list"], timeout=3.0, text=True)
+            res = _run_go_ios([self.ios, "list"], timeout=3.0, text=True)
             udids = []
             for data in _json_lines(res.stdout):
                 udids = data.get("deviceList", udids)
@@ -242,7 +258,7 @@ class DeviceManager:
     def _ios_device_name(self, udid):
         """端末名を返す。この Mac が信頼していない端末などで取得できなければ None。"""
         try:
-            res = _run([self.ios, f"--udid={udid}", "info"], timeout=3.0, text=True)
+            res = _run_go_ios([self.ios, f"--udid={udid}", "info"], timeout=3.0, text=True)
             return next((data["DeviceName"] for data in _json_lines(res.stdout) if data.get("DeviceName")), None)
         except Exception:
             return None
@@ -302,7 +318,7 @@ class DeviceManager:
         """go-iosのストリーム（mjpegサーバー）を起動する。成功時はNone、失敗時はユーザー向けメッセージ。"""
         p = subprocess.Popen(
             [self.ios, f"--udid={device['id']}", "screenshot", "--stream", f"--port={IOS_STREAM_PORT}"],
-            env=_go_ios_env(), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            env=_go_ios_env(), cwd=_go_ios_cwd(), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
             startupinfo=paths.get_startupinfo(), creationflags=paths.CREATE_NO_WINDOW,
         )
         self.processes.append(p)
@@ -416,7 +432,7 @@ class DeviceManager:
         os.close(fd)
         try:
             cmd = [self.ios, f"--udid={device['id']}", "screenshot", f"--output={tmp_path}"]
-            res = _run(cmd, timeout=15, env=_go_ios_env())
+            res = _run_go_ios(cmd, timeout=15, env=_go_ios_env())
             frame = cv2.imread(tmp_path)
             if frame is not None:
                 return frame, None
@@ -438,7 +454,7 @@ class DeviceManager:
         """トンネルの一覧から、端末の接続先 (address, rsdPort) を返す。無ければNone。
         一覧を問い合わせると、トンネルが止まっていれば自動で起動する。"""
         try:
-            res = _run([self.ios, "tunnel", "ls"], timeout=5, env=_go_ios_env(), text=True)
+            res = _run_go_ios([self.ios, "tunnel", "ls"], timeout=5, env=_go_ios_env(), text=True)
             lines = res.stdout.strip().splitlines()
             for t in (json.loads(lines[-1]) if lines else []):
                 if isinstance(t, dict) and t.get("udid") == udid:
@@ -500,7 +516,7 @@ class DeviceManager:
         仕様: docs/spec/bugs/LOCAL-030_終了時にiOSのトンネルが動いていないとトンネルが起動して残る.md
         """
         try:
-            _run([self.ios, "tunnel", "stopagent"], timeout=10, env=_go_ios_env(agent=False))
+            _run_go_ios([self.ios, "tunnel", "stopagent"], timeout=10, env=_go_ios_env(agent=False))
             return True
         except Exception as e:
             add_log(f"⚠️ トンネルの停止に失敗しました: {e}")

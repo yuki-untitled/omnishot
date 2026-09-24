@@ -20,6 +20,15 @@ def save_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def go_ios_work_dir(tmp_path, monkeypatch):
+    """go-ios の作業フォルダを一時フォルダに差し替える（テストで ~/Library/Application Support を作らない）。"""
+    from omnishot import paths
+    work_dir = tmp_path / "go-ios-work"
+    monkeypatch.setattr(paths, "GO_IOS_WORK_DIR", str(work_dir))
+    return work_dir
+
+
+@pytest.fixture(autouse=True)
 def reset_state():
     """テストごとに共有状態を初期化する。"""
     state.score_history.clear()

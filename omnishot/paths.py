@@ -33,3 +33,11 @@ STATIC_FOLDER = os.path.join(base_path, 'static')
 
 SAVE_DIR = os.path.join(EXE_DIR, "captures")
 os.makedirs(SAVE_DIR, exist_ok=True)
+
+# 仕様: docs/spec/bugs/LOCAL-032_アプリ化するとiOSのトンネルが起動できずトンネルの起動が連鎖し続ける.md
+# go-ios を呼び出すときの作業フォルダ（トンネル用の識別情報 selfIdentity.plist が作られる）。
+# Finder から起動した .app は作業フォルダが "/" で書き込めないため、ユーザーごとのアプリ用フォルダに固定する。
+if platform.system() == "Windows":
+    GO_IOS_WORK_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "OmniShot")
+else:
+    GO_IOS_WORK_DIR = os.path.expanduser("~/Library/Application Support/OmniShot")

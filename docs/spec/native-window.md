@@ -27,6 +27,7 @@
 
 ## 制約・関連機能
 - Web UI本体の機能は [screenshot-capture.md](screenshot-capture.md)・[gallery.md](gallery.md) を参照。
+- go-ios のトンネル用の識別情報は、ユーザーごとのアプリ用フォルダ（Mac: `~/Library/Application Support/OmniShot`、Windows: `%APPDATA%\OmniShot`）に保存する。Finder から起動したアプリは、作業フォルダに書き込めないため（[LOCAL-032](bugs/LOCAL-032_アプリ化するとiOSのトンネルが起動できずトンネルの起動が連鎖し続ける.md)）。終了時の後始末では消さない。
 - ビルド時の前提条件（Windowsの WebView2 Runtime 等）は [../guides/build.md](../guides/build.md) を参照。
 
 ## 変更理由
@@ -40,3 +41,4 @@
 - issue #LOCAL-030: 同じ確認の際、トンネルが動いていない状態（Android 端末だけを使った場合）で終了すると、トンネルを止める命令が go-ios のトンネルを起動してしまい、終了後に残ることが分かった。[LOCAL-030](bugs/LOCAL-030_終了時にiOSのトンネルが動いていないとトンネルが起動して残る.md) で修正した。
 - issue #LOCAL-029: アプリ上で、adb サーバーを止めた後に起動し直すと、最初の検出で Android 端末が一覧に表示され、撮影できることをユーザーが確認した。
 - issue #LOCAL-030: アプリ上で、Android 端末だけを使ってアプリを終了した後、go-ios のトンネルと adb サーバーのプロセスが残らないことを確認した。
+- issue #LOCAL-032: Finder から起動した .app で iOS のトンネルが起動できず、トンネルの起動が連鎖し続けた。トンネル用の識別情報の保存先をユーザーごとのアプリ用フォルダにした（[LOCAL-032](bugs/LOCAL-032_アプリ化するとiOSのトンネルが起動できずトンネルの起動が連鎖し続ける.md)）。

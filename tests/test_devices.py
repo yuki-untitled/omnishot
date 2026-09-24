@@ -1,5 +1,6 @@
 # 仕様: docs/spec/device-selection.md
 # 端末の一覧の検出（adb・go-ios の出力の解析）と、撮影する端末の決定
+import io
 import json
 import subprocess
 import types
@@ -196,6 +197,39 @@ def test_stop_ios_tunnel_does_not_enable_agent(manager, monkeypatch):
 def test_go_ios_env(monkeypatch, agent, expected):
     monkeypatch.setenv("ENABLE_GO_IOS_AGENT", "kernel")
     assert dm_module._go_ios_env(agent).get("ENABLE_GO_IOS_AGENT") == expected
+
+
+# 仕様: docs/spec/bugs/LOCAL-032_アプリ化するとiOSのトンネルが起動できずトンネルの起動が連鎖し続ける.md
+@pytest.mark.parametrize("call", [
+    lambda m: m._list_ios_devices(),
+    lambda m: m._ios_device_name("U"),
+    lambda m: m._ios_screenshot_once({"id": "U", "os": "ios"}),
+    lambda m: m._ios_tunnel_endpoint("U"),
+    lambda m: m.stop_ios_tunnel(),
+])
+def test_go_ios_runs_in_work_dir(manager, monkeypatch, go_ios_work_dir, call):
+    cwds = []
+    def run(cmd, cwd=None, **kwargs):
+        cwds.append(cwd)
+        return _completed(json.dumps({"deviceList": []}) + "\n" if cmd[1] == "list" else "")
+    monkeypatch.setattr(dm_module.subprocess, "run", run)
+    call(manager)
+    assert cwds and all(c == str(go_ios_work_dir) for c in cwds)
+    assert go_ios_work_dir.is_dir()
+
+
+def test_ios_stream_runs_in_work_dir(manager, monkeypatch, go_ios_work_dir):
+    seen = {}
+    class FakePopen:
+        def __init__(self, cmd, cwd=None, **kwargs):
+            seen["cwd"] = cwd
+            self.stderr = io.BytesIO(b"")
+        def poll(self):
+            return 1
+    monkeypatch.setattr(dm_module.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(manager, "cleanup_all_processes", lambda: None)
+    manager._start_ios_stream({"id": "U", "os": "ios"}, timeout=0.1)
+    assert seen["cwd"] == str(go_ios_work_dir)
 
 
 def test_adb_command(manager):
