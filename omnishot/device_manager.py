@@ -17,6 +17,13 @@ from .logs import add_log
 # 仕様: docs/spec/device-selection.md（このメッセージのときは、画面が端末の一覧を自動で検出し直す）
 DEVICE_NOT_CONNECTED_MESSAGE = "❌ 選択した端末が接続されていません。ケーブルを確認してください。"
 
+# 仕様: docs/spec/device-selection.md（撮影できる状態ではない Android 端末の理由と対処）
+ANDROID_STATE_HINTS = {
+    "unauthorized": "USBデバッグが許可されていません。端末の画面の「USBデバッグを許可しますか？」で「許可」を押してから、更新ボタンを押してください。",
+    "offline": "端末が応答していません。ケーブルを挿し直してから、更新ボタンを押してください。",
+    "authorizing": "USBデバッグの許可を確認しています。少し待ってから、更新ボタンを押してください。",
+}
+
 # iOSストリーム（mjpegサーバー）が待ち受けるポート。capture.py の受信側もこれを参照する。
 IOS_STREAM_PORT = 3333
 
@@ -97,6 +104,9 @@ class DeviceManager:
     def __init__(self):
         # 属性の定義は必ずここで行います
         self.processes = []
+        # 仕様: docs/spec/device-selection.md
+        # 直近の一覧の検出で見つかった、撮影できる状態ではない Android 端末の理由（ログ表示用）
+        self.android_device_problems = []
         # 仕様: docs/spec/bugs/LOCAL-017_ストリーム接続の一時的な切断で自動撮影全体が停止する.md
         # go-iosの標準エラー出力から拾った、直近の致命的エラーの内容（無ければNone）。
         # HTTP接続が切れた際のメッセージ（例:「Remote end closed connection without response」）
@@ -120,22 +130,48 @@ class DeviceManager:
 
     def _list_android_devices(self):
         devices = []
+        problems = []
         try:
-            # サーバー起動を待つためタイムアウトを 5.0秒 に
-            res = subprocess.run([self.adb, "devices", "-l"], capture_output=True, text=True, timeout=5.0, creationflags=paths.CREATE_NO_WINDOW)
+            res = self._adb_devices()
+            # 仕様: docs/spec/native-window.md（終了時に adb サーバーを止めるため、次の起動時はサーバーが起動し直す）
+            # サーバーを起動した直後は端末の認識が間に合わないことがあるため、1秒待って1回だけ検出し直す
+            if "daemon started successfully" in res.stderr and len(res.stdout.strip().split('\n')) <= 1:
+                time.sleep(1.0)
+                res = self._adb_devices()
             # 2行目以降が端末。例: "<serial> device usb:1-1 product:x model:Pixel_7 ..."
             for line in res.stdout.strip().split('\n')[1:]:
                 parts = line.split()
-                if len(parts) < 2 or parts[1] != "device":
+                if len(parts) < 2:
                     continue
                 # 仕様: docs/spec/device-selection.md（USB接続の端末のみを対象にする）
                 if not any(p.startswith("usb:") for p in parts[2:]):
+                    continue
+                if parts[1] != "device":
+                    # 仕様: docs/spec/device-selection.md（撮影できる状態ではない端末は、理由と対処をログに出す）
+                    state_name = "no permissions" if parts[1] == "no" else parts[1]
+                    hint = ANDROID_STATE_HINTS.get(state_name, f"撮影できる状態ではありません（adbの状態: {state_name}）。")
+                    problems.append(f"⚠️ Android端末（…{parts[0][-6:]}）: {hint}")
                     continue
                 model = next((p[len("model:"):] for p in parts if p.startswith("model:")), None)
                 devices.append({"id": parts[0], "os": "android", "name": model.replace("_", " ") if model else None})
         except Exception as e:
             print(f"DEBUG: Android check failed: {e}")
+        self.android_device_problems = problems
         return devices
+
+    def _adb_devices(self):
+        # サーバー起動を待つためタイムアウトを 5.0秒 に
+        return subprocess.run([self.adb, "devices", "-l"], capture_output=True, text=True, timeout=5.0, creationflags=paths.CREATE_NO_WINDOW)
+
+    def stop_adb_server(self):
+        """adb サーバーを止める。
+
+        仕様: docs/spec/native-window.md（終了時の後始末で adb サーバーも止める）
+        """
+        try:
+            subprocess.run([self.adb, "kill-server"], capture_output=True, timeout=5, creationflags=paths.CREATE_NO_WINDOW)
+        except Exception as e:
+            print(f"⚠️ adb サーバーの停止に失敗しました: {e}")
 
     def _list_ios_devices(self):
         devices = []
@@ -322,9 +358,11 @@ class DeviceManager:
 
         仕様: docs/spec/native-window.md（終了時の後始末でトンネルも止める）
         仕様: docs/spec/bugs/LOCAL-025_iOSのトンネルに古い接続が残ると撮影を開始できず理由も表示されない.md
+        仕様: docs/spec/bugs/LOCAL-030_終了時にiOSのトンネルが動いていないとトンネルが起動して残る.md
+        ENABLE_GO_IOS_AGENT を付けると、トンネルが動いていないときに起動してしまい残るため、付けずに送る。
         """
         env = os.environ.copy()
-        env["ENABLE_GO_IOS_AGENT"] = "user"
+        env.pop("ENABLE_GO_IOS_AGENT", None)
         try:
             subprocess.run([self.ios, "tunnel", "stopagent"], env=env, capture_output=True, timeout=10,
                            creationflags=paths.CREATE_NO_WINDOW)

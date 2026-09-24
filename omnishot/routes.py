@@ -110,7 +110,11 @@ def register(app):
     # 仕様: docs/spec/device-selection.md
     @app.route('/devices')
     def get_devices():
-        return jsonify(dev_manager.list_devices())
+        devices = dev_manager.list_devices()
+        # 仕様: docs/spec/device-selection.md（撮影できる状態ではない Android 端末の理由と対処をログに出す）
+        for message in dev_manager.android_device_problems:
+            add_log(message)
+        return jsonify(devices)
 
     @app.route('/start')
     def start():
@@ -156,6 +160,8 @@ def register(app):
             try:
                 # 仕様: docs/spec/native-window.md（終了後も go-ios の常駐トンネルが動き続けないよう止める）
                 dev_manager.stop_ios_tunnel()
+                # 仕様: docs/spec/native-window.md（終了後も adb サーバーが動き続けないよう止める）
+                dev_manager.stop_adb_server()
                 _cleanup_temp_data()
                 print("🧹 終了処理が完了しました。")
             except Exception as e:
