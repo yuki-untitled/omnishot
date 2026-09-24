@@ -12,7 +12,7 @@ from flask import render_template, request, jsonify, send_from_directory, send_f
 
 from . import display_names, state
 from .capture import auto_capture_loop, manual_capture
-from .device_manager import dev_manager
+from .device_manager import DEVICE_NOT_CONNECTED_MESSAGE, dev_manager
 from .logs import add_log, log_queue, log_condition
 from .paths import SAVE_DIR
 
@@ -102,6 +102,8 @@ def register(app):
         return jsonify({
             "is_running": state.is_running,
             "error": state.last_error,
+            # 仕様: docs/spec/device-selection.md（選択した端末が接続されていないときは、画面が一覧を検出し直す）
+            "device_missing": state.last_error == DEVICE_NOT_CONNECTED_MESSAGE,
             "mode": state.current_config["mode"],
         })
 
@@ -137,7 +139,8 @@ def register(app):
         device_id = request.args.get('device', '')
         filename, error_msg = manual_capture(device_id)
         if error_msg:
-            return jsonify({"error": error_msg}), 400
+            # 仕様: docs/spec/device-selection.md（選択した端末が接続されていないときは、画面が一覧を検出し直す）
+            return jsonify({"error": error_msg, "device_missing": error_msg == DEVICE_NOT_CONNECTED_MESSAGE}), 400
         return jsonify({"filename": filename})
 
     @app.route('/shutdown', methods=['POST'])
@@ -151,6 +154,8 @@ def register(app):
         def kill_process():
             time.sleep(0.5)
             try:
+                # 仕様: docs/spec/native-window.md（終了後も go-ios の常駐トンネルが動き続けないよう止める）
+                dev_manager.stop_ios_tunnel()
                 _cleanup_temp_data()
                 print("🧹 終了処理が完了しました。")
             except Exception as e:

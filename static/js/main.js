@@ -13,6 +13,7 @@ let sessions = {};
 let devices = [];
 let isCapturing = false;
 let isLoadingDevices = false;
+let isManualCapturing = false;
 
 // DOM要素をキャッシュ（高速化のため一度だけ取得）
 const elStartBtn = document.getElementById('startBtn');
@@ -93,6 +94,21 @@ function updateDeviceControls() {
     const disabled = isCapturing || isLoadingDevices;
     elDeviceSelect.disabled = disabled;
     elRefreshDevicesBtn.disabled = disabled;
+
+    // 仕様: docs/spec/bugs/LOCAL-023_端末が見つかりませんの表示中に撮影できてしまう.md
+    // 「端末が見つかりません」「検出中...」の間は、手動撮影・自動撮影を押せない
+    const noDevice = isLoadingDevices || devices.length === 0;
+    elManualCaptureBtn.disabled = noDevice || isManualCapturing;
+    elStartBtn.disabled = noDevice;
+}
+
+// 仕様: docs/spec/device-selection.md（2台以上で未選択のときは撮影しない）
+function confirmDeviceSelected() {
+    if (devices.length >= 2 && !elDeviceSelect.value) {
+        alert("撮影する端末を選択してください");
+        return false;
+    }
+    return true;
 }
 
 function renderDevices(previousId) {
@@ -308,6 +324,8 @@ setInterval(() => {
                 // エラー理由があればそれを表示、なければ標準メッセージ
                 const message = data.error ? `${data.error}` : "自動撮影を停止しました。";
                 alert(message);
+                // 仕様: docs/spec/device-selection.md（選択した端末が接続されていないときは、一覧を検出し直す）
+                if (data.device_missing) loadDevices();
             }
         })
         .catch(err => console.error("Status check failed:", err));
@@ -532,11 +550,7 @@ function startLogStream() {
 
 // 自動撮影コントロール系
 elStartBtn.addEventListener('click', () => {
-    // 仕様: docs/spec/device-selection.md
-    if (devices.length >= 2 && !elDeviceSelect.value) {
-        alert("撮影する端末を選択してください");
-        return;
-    }
+    if (!confirmDeviceSelected()) return;
     fetch(`/start?${settingsQuery()}&device=${encodeURIComponent(elDeviceSelect.value)}`)
         .then(() => setStatus(true));
 });
@@ -544,22 +558,27 @@ elStartBtn.addEventListener('click', () => {
 elRefreshDevicesBtn.addEventListener('click', loadDevices);
 
 // 仕様: docs/spec/manual-capture.md
-// 端末の選択検証（未選択・未接続）はサーバー側（dev_manager.resolve_device）の判定に委ねる。
+// 2台以上で未選択なら画面側で止め、選択した端末が未接続かどうかはサーバー側（dev_manager.resolve_device）で判定する。
 // 処理中はボタンを無効化し、連打による多重保存を防ぐ。
 elManualCaptureBtn.addEventListener('click', () => {
-    elManualCaptureBtn.disabled = true;
+    if (!confirmDeviceSelected()) return;
+    isManualCapturing = true;
+    updateDeviceControls();
     fetch(`/manual_capture?device=${encodeURIComponent(elDeviceSelect.value)}`, { method: 'POST' })
         .then(res => res.json())
         .then(data => {
             if (data.error) {
                 alert(data.error);
+                // 仕様: docs/spec/device-selection.md（選択した端末が接続されていないときは、一覧を検出し直す）
+                if (data.device_missing) loadDevices();
             } else {
                 updateGallery();
             }
         })
         .catch(err => console.error("Manual capture error:", err))
         .finally(() => {
-            elManualCaptureBtn.disabled = false;
+            isManualCapturing = false;
+            updateDeviceControls();
         });
 });
 

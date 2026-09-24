@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 
 from . import paths, state
-from .device_manager import IOS_STREAM_PORT, dev_manager
+from .device_manager import IOS_STREAM_PORT, dev_manager, go_ios_error_message
 from .logs import add_log
 from .paths import SAVE_DIR
 from .stream_receivers import AndroidScreencapReceiver, iOSStreamReceiver
@@ -59,6 +59,19 @@ def _capture_single_frame(device):
             return None
 
     # iOS: 常時ストリームではなく、1回分の screenshot コマンドで一時ファイルに書き出す
+    frame, reason = _ios_screenshot_once(device)
+    # 仕様: docs/spec/bugs/LOCAL-025_iOSのトンネルに古い接続が残ると撮影を開始できず理由も表示されない.md
+    # 仕様: docs/spec/native-window.md（トンネルが起動途中なら、準備ができるのを待つ）
+    # トンネルを整えられた場合だけ、1回だけやり直す
+    if frame is None and dev_manager.recover_ios_connection(device["id"], reason):
+        frame, reason = _ios_screenshot_once(device)
+    if frame is None:
+        add_log(f"⚠️ iOS screenshot failed: {reason}")
+    return frame
+
+
+def _ios_screenshot_once(device):
+    """iOSの画面を1回取得する。(フレーム, 失敗理由) を返す。成功時の失敗理由は None。"""
     fd, tmp_path = tempfile.mkstemp(suffix=".png")
     os.close(fd)
     try:
@@ -67,15 +80,15 @@ def _capture_single_frame(device):
         cmd = [dev_manager.ios, f"--udid={device['id']}", "screenshot", f"--output={tmp_path}"]
         res = subprocess.run(cmd, env=env, capture_output=True, timeout=15, creationflags=paths.CREATE_NO_WINDOW)
         frame = cv2.imread(tmp_path)
-        if frame is None:
-            # 仕様: docs/spec/bugs/LOCAL-017_ストリーム接続の一時的な切断で自動撮影全体が停止する.md
-            # 以前はgo-iosの出力を破棄しており、失敗原因が分からなかった
-            stderr = res.stderr.decode('utf-8', errors='replace').strip() if res.stderr else ""
-            add_log(f"⚠️ iOS screenshot failed: {stderr or f'exit code {res.returncode}'}")
-        return frame
+        if frame is not None:
+            return frame, None
+        # 仕様: docs/spec/bugs/LOCAL-017_ストリーム接続の一時的な切断で自動撮影全体が停止する.md
+        # 以前はgo-iosの出力を破棄しており、失敗原因が分からなかった
+        stderr = res.stderr.decode('utf-8', errors='replace').strip() if res.stderr else ""
+        errors = [m for m in (go_ios_error_message(line) for line in stderr.splitlines()) if m]
+        return None, errors[-1] if errors else (stderr or f"exit code {res.returncode}")
     except Exception as e:
-        add_log(f"⚠️ iOS screenshot failed: {e}")
-        return None
+        return None, str(e)
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
