@@ -26,7 +26,7 @@ def reset_state():
     state.is_running = False
     state.last_error = None
     state.last_frame_data = None
-    state.current_config.update({"interval": 0.2, "settling": 0.4, "prefix": "", "mode": "static", "device": ""})
+    state.current_config.update({"interval": state.DEFAULT_INTERVAL, "settling": state.DEFAULT_SETTLING, "prefix": "", "mode": "static", "device": ""})
     state.active_receiver = None
     state.active_device = None
     state.session_counter = 0

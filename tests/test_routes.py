@@ -144,3 +144,8 @@ def test_manual_capture_route(client, monkeypatch):
     assert res.status_code == 400
     assert res.get_json() == {"error": DEVICE_NOT_CONNECTED_MESSAGE, "device_missing": True}
 
+
+def test_settings_default_when_not_sent(client):
+    # 仕様: docs/spec/screenshot-capture.md#実現内容what（設定の初期値）
+    client.get("/update_settings")
+    assert (state.current_config["interval"], state.current_config["settling"]) == (0.3, 1.0)

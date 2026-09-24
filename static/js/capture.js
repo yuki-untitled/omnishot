@@ -36,10 +36,15 @@ function clampInput(el, parse, fallback, min, max) {
     return value;
 }
 
+// 仕様: docs/spec/screenshot-capture.md#実現内容what（設定の初期値。入力が空・不正なときもこの値にする）
+const DEFAULT_INTERVAL = 0.3;
+const DEFAULT_SETTLING = 1.0;
+const DEFAULT_JUDGE_COUNT = 3;
+
 function getClampedSettings() {
-    const interval = clampInput(elCheckInterval, parseFloat, 0.5, 0.1, 30);
-    const settling = clampInput(elSettlingTime, parseFloat, 1.0, 0.1, 30);
-    const judgeCount = clampInput(elJudgeCount, parseInt, 3, 1, 10);
+    const interval = clampInput(elCheckInterval, parseFloat, DEFAULT_INTERVAL, 0.1, 30);
+    const settling = clampInput(elSettlingTime, parseFloat, DEFAULT_SETTLING, 0.1, 30);
+    const judgeCount = clampInput(elJudgeCount, parseInt, DEFAULT_JUDGE_COUNT, 1, 10);
     const mode = elModeSelect.value;
     // 動的モードでは、チェック間隔 × 判定回数 を静止待ち時間として送る
     const finalSettling = mode === 'static' ? settling : interval * judgeCount;

@@ -11,9 +11,13 @@ is_running = False
 last_error = None
 last_frame_data = None
 
+# 仕様: docs/spec/screenshot-capture.md#実現内容what（設定の初期値。画面から設定が届く前・届かなかったときに使う）
+DEFAULT_INTERVAL = 0.3
+DEFAULT_SETTLING = 1.0
+
 current_config = {
-    "interval": 0.2,
-    "settling": 0.4,
+    "interval": DEFAULT_INTERVAL,
+    "settling": DEFAULT_SETTLING,
     "prefix": "",
     "mode": "static",
     # 仕様: docs/spec/device-selection.md（撮影する端末の識別子。空なら端末が1台のときだけ自動で使う）

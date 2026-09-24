@@ -16,8 +16,8 @@ from .paths import SAVE_DIR
 def _apply_config_from_args():
     """クエリ文字列の撮影設定を state.current_config に反映する。"""
     state.current_config["prefix"] = request.args.get('prefix', '')
-    state.current_config["interval"] = float(request.args.get('interval', 0.2))
-    state.current_config["settling"] = float(request.args.get('settling', 0.4))
+    state.current_config["interval"] = float(request.args.get('interval', state.DEFAULT_INTERVAL))
+    state.current_config["settling"] = float(request.args.get('settling', state.DEFAULT_SETTLING))
     state.current_config["mode"] = request.args.get('mode', 'static')
 
 
