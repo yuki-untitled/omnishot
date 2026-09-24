@@ -11,6 +11,11 @@ import numpy as np
 from .logs import add_log
 
 
+def decode_image(data):
+    """PNG・JPEG の画像データを BGR のフレームにする。読めなければ None。"""
+    return cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+
 class _FrameReceiver(threading.Thread):
     """常に最新の1コマだけを保持する受信スレッドの共通処理。"""
     def __init__(self):
@@ -56,7 +61,7 @@ class iOSStreamReceiver(_FrameReceiver):
                             if a != -1 and b != -1 and a < b:
                                 jpg = bytes_data[a:b+2]
                                 bytes_data = bytes_data[b+2:]
-                                frame = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
+                                frame = decode_image(jpg)
                                 if frame is not None:
                                     self._publish(frame)
                             else:
@@ -109,11 +114,11 @@ class AndroidScreencapReceiver(_FrameReceiver):
     """
     WORKERS = 2
 
-    def __init__(self, adb_path, serial=None):
+    def __init__(self, screencap_command):
+        """screencap_command: 選択した端末で `screencap` を実行する adb のコマンド（形式の指定は含まない）。"""
         super().__init__()
-        self.adb = adb_path
         # 仕様: docs/spec/device-selection.md（複数接続時は選択した端末を指定する）
-        self.serial = serial
+        self.screencap_command = screencap_command
         self.use_raw = True
         self._publish_lock = threading.Lock()
         self._last_started_at = 0.0
@@ -121,7 +126,7 @@ class AndroidScreencapReceiver(_FrameReceiver):
     def _capture_once(self):
         """1コマ取得し、(取得を始めた時刻, フレーム or None) を返す。"""
         use_raw = self.use_raw
-        cmd = [self.adb] + (["-s", self.serial] if self.serial else []) + ["exec-out", "screencap"] + ([] if use_raw else ["-p"])
+        cmd = self.screencap_command + ([] if use_raw else ["-p"])
         started_at = time.time()
         res = subprocess.run(cmd, capture_output=True, check=True)
         if not res.stdout:
@@ -132,7 +137,7 @@ class AndroidScreencapReceiver(_FrameReceiver):
                 self.use_raw = False
                 add_log("⚠️ この端末は高速な画面取得に対応していないため、従来の方法で取得します")
             return started_at, frame
-        return started_at, cv2.imdecode(np.frombuffer(res.stdout, dtype=np.uint8), cv2.IMREAD_COLOR)
+        return started_at, decode_image(res.stdout)
 
     def _worker(self, delay):
         time.sleep(delay)

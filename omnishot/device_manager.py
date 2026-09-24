@@ -1,5 +1,6 @@
 # 仕様: docs/spec/screenshot-capture.md
 # 仕様: docs/spec/device-selection.md
+"""端末（adb・go-ios）とのやり取り: 一覧の検出、ストリームの起動、1回だけの画面取得、iOS のトンネルの管理。"""
 import atexit
 import json
 import os
@@ -8,11 +9,15 @@ import plistlib
 import socket
 import struct
 import subprocess
+import tempfile
 import threading
 import time
 
+import cv2
+
 from . import paths
 from .logs import add_log
+from .stream_receivers import decode_image
 
 # 仕様: docs/spec/device-selection.md（このメッセージのときは、画面が端末の一覧を自動で検出し直す）
 DEVICE_NOT_CONNECTED_MESSAGE = "❌ 選択した端末が接続されていません。ケーブルを確認してください。"
@@ -26,6 +31,32 @@ ANDROID_STATE_HINTS = {
 
 # iOSストリーム（mjpegサーバー）が待ち受けるポート。capture.py の受信側もこれを参照する。
 IOS_STREAM_PORT = 3333
+
+
+def _run(cmd, timeout, env=None, text=False):
+    """コンソールウィンドウを出さずにコマンドを実行し、出力を受け取る。"""
+    return subprocess.run(cmd, env=env, capture_output=True, text=text, timeout=timeout,
+                          creationflags=paths.CREATE_NO_WINDOW)
+
+
+def _go_ios_env(agent=True):
+    """go-ios に渡す環境変数。
+
+    agent=True: iOS 17 以降の通信に使う常駐トンネル（エージェント）を、必要なら自動で起動させる。
+    agent=False: 自動で起動させない。
+      仕様: docs/spec/bugs/LOCAL-030_終了時にiOSのトンネルが動いていないとトンネルが起動して残る.md
+      トンネルを止める命令に付けると、トンネルが動いていないときに起動してしまい残るため。
+    """
+    env = os.environ.copy()
+    if agent:
+        env["ENABLE_GO_IOS_AGENT"] = "user"
+    else:
+        env.pop("ENABLE_GO_IOS_AGENT", None)
+    return env
+
+
+def _stderr_text(res):
+    return res.stderr.decode('utf-8', errors='replace').strip() if res.stderr else ""
 
 
 # 仕様: docs/spec/bugs/LOCAL-017_ストリーム接続の一時的な切断で自動撮影全体が停止する.md
@@ -64,6 +95,17 @@ def is_ios_tunnel_unreachable(message):
     return bool(message) and "could not connect to RSD" in message
 
 
+def _json_lines(stdout):
+    """go-ios の出力（1行に1つの JSON）のうち、読める行を dict として順に返す。"""
+    for line in stdout.splitlines():
+        try:
+            data = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            yield data
+
+
 def _recv_exact(sock, size):
     data = b""
     while len(data) < size:
@@ -100,6 +142,15 @@ def _usbmuxd_connection_types():
         return None
 
 
+def _android_state_problem(serial, state_name):
+    """撮影できる状態ではない Android 端末について、ログに出す理由と対処を返す。
+
+    仕様: docs/spec/device-selection.md（撮影できる状態ではない端末は、理由と対処をログに出す）
+    """
+    hint = ANDROID_STATE_HINTS.get(state_name, f"撮影できる状態ではありません（adbの状態: {state_name}）。")
+    return f"⚠️ Android端末（…{serial[-6:]}）: {hint}"
+
+
 class DeviceManager:
     def __init__(self):
         # 属性の定義は必ずここで行います
@@ -124,6 +175,13 @@ class DeviceManager:
 
         atexit.register(self.cleanup_all_processes)
 
+    def adb_command(self, serial, *args):
+        """指定した端末に対する adb のコマンドを組み立てる（serial が空なら端末を指定しない）。"""
+        return [self.adb] + (["-s", serial] if serial else []) + list(args)
+
+    # ------------------------------------------------------------------
+    # 端末の一覧
+    # ------------------------------------------------------------------
     def list_devices(self):
         """USB接続されている端末の一覧を返す。要素は {"id", "os", "name"}（nameは取得できなければNone）。"""
         return self._list_android_devices() + self._list_ios_devices()
@@ -143,17 +201,15 @@ class DeviceManager:
                 parts = line.split()
                 if len(parts) < 2:
                     continue
+                serial, adb_state = parts[0], parts[1]
                 # 仕様: docs/spec/device-selection.md（USB接続の端末のみを対象にする）
                 if not any(p.startswith("usb:") for p in parts[2:]):
                     continue
-                if parts[1] != "device":
-                    # 仕様: docs/spec/device-selection.md（撮影できる状態ではない端末は、理由と対処をログに出す）
-                    state_name = "no permissions" if parts[1] == "no" else parts[1]
-                    hint = ANDROID_STATE_HINTS.get(state_name, f"撮影できる状態ではありません（adbの状態: {state_name}）。")
-                    problems.append(f"⚠️ Android端末（…{parts[0][-6:]}）: {hint}")
+                if adb_state != "device":
+                    problems.append(_android_state_problem(serial, "no permissions" if adb_state == "no" else adb_state))
                     continue
                 model = next((p[len("model:"):] for p in parts if p.startswith("model:")), None)
-                devices.append({"id": parts[0], "os": "android", "name": model.replace("_", " ") if model else None})
+                devices.append({"id": serial, "os": "android", "name": model.replace("_", " ") if model else None})
         except Exception as e:
             print(f"DEBUG: Android check failed: {e}")
         self.android_device_problems = problems
@@ -161,28 +217,15 @@ class DeviceManager:
 
     def _adb_devices(self):
         # サーバー起動を待つためタイムアウトを 5.0秒 に
-        return subprocess.run([self.adb, "devices", "-l"], capture_output=True, text=True, timeout=5.0, creationflags=paths.CREATE_NO_WINDOW)
-
-    def stop_adb_server(self):
-        """adb サーバーを止める。
-
-        仕様: docs/spec/native-window.md（終了時の後始末で adb サーバーも止める）
-        """
-        try:
-            subprocess.run([self.adb, "kill-server"], capture_output=True, timeout=5, creationflags=paths.CREATE_NO_WINDOW)
-        except Exception as e:
-            print(f"⚠️ adb サーバーの停止に失敗しました: {e}")
+        return _run([self.adb, "devices", "-l"], timeout=5.0, text=True)
 
     def _list_ios_devices(self):
         devices = []
         try:
-            res = subprocess.run([self.ios, "list"], capture_output=True, text=True, timeout=3.0, creationflags=paths.CREATE_NO_WINDOW)
+            res = _run([self.ios, "list"], timeout=3.0, text=True)
             udids = []
-            for line in res.stdout.splitlines():
-                try:
-                    udids = json.loads(line).get("deviceList", udids)
-                except (ValueError, AttributeError):
-                    continue
+            for data in _json_lines(res.stdout):
+                udids = data.get("deviceList", udids)
             # 同じ端末が複数回返ることがあるため、順序を保ったまま重複を除く
             udids = list(dict.fromkeys(udids))
             connection_types = _usbmuxd_connection_types()
@@ -199,17 +242,10 @@ class DeviceManager:
     def _ios_device_name(self, udid):
         """端末名を返す。この Mac が信頼していない端末などで取得できなければ None。"""
         try:
-            res = subprocess.run([self.ios, f"--udid={udid}", "info"], capture_output=True, text=True, timeout=3.0, creationflags=paths.CREATE_NO_WINDOW)
-            for line in res.stdout.splitlines():
-                try:
-                    name = json.loads(line).get("DeviceName")
-                except (ValueError, AttributeError):
-                    continue
-                if name:
-                    return name
+            res = _run([self.ios, f"--udid={udid}", "info"], timeout=3.0, text=True)
+            return next((data["DeviceName"] for data in _json_lines(res.stdout) if data.get("DeviceName")), None)
         except Exception:
-            pass
-        return None
+            return None
 
     def resolve_device(self, device_id=""):
         """選択された端末が接続されていれば、その端末を返す。成功時は ({"id", "os", "name"}, None)、失敗時は (None, メッセージ)。
@@ -231,50 +267,49 @@ class DeviceManager:
             return None, DEVICE_NOT_CONNECTED_MESSAGE
         return device, None
 
+    # ------------------------------------------------------------------
+    # 自動撮影のストリーム
+    # ------------------------------------------------------------------
     def start_stream(self, device_id=""):
-        """選択された端末のストリームを開始する。成功時は ({"id", "os"}, None)、失敗時は (None, メッセージ)。"""
+        """選択された端末のストリームを開始する。成功時は ({"id", "os", "name"}, None)、失敗時は (None, メッセージ)。"""
         self.cleanup_all_processes()
-        startupinfo = paths.get_startupinfo()
 
         device, error_msg = self.resolve_device(device_id)
         if not device:
             return None, error_msg
 
-        try:
-            if device["os"] == "ios":
-                add_log("📱 iOS ストリーム接続を開始します...")
-                error_msg = self._start_ios_stream(device, startupinfo, timeout=5.0)
-                # 仕様: docs/spec/bugs/LOCAL-025_iOSのトンネルに古い接続が残ると撮影を開始できず理由も表示されない.md
-                # 仕様: docs/spec/native-window.md（トンネルが起動途中なら、準備ができるのを待つ）
-                if error_msg and self.recover_ios_connection(device["id"], self.last_stream_error):
-                    error_msg = self._start_ios_stream(device, startupinfo, timeout=15.0)
-                if error_msg:
-                    return None, error_msg
-                return device, None
-
+        if device["os"] == "android":
             # Androidは AndroidScreencapReceiver が `adb exec-out screencap` を
             # 都度実行して取得するため、ここでの常駐プロセス起動は不要
             add_log("🤖 Android ストリーム接続を開始します...")
             return device, None
 
+        add_log("📱 iOS ストリーム接続を開始します...")
+        try:
+            error_msg = self._start_ios_stream(device, timeout=5.0)
+            # 仕様: docs/spec/bugs/LOCAL-025_iOSのトンネルに古い接続が残ると撮影を開始できず理由も表示されない.md
+            # 仕様: docs/spec/native-window.md（トンネルが起動途中なら、準備ができるのを待つ）
+            if error_msg and self.recover_ios_connection(device["id"], self.last_stream_error):
+                error_msg = self._start_ios_stream(device, timeout=15.0)
         except Exception as e:
             add_log(f"詳細エラー: {type(e).__name__}: {str(e)}")
             return None, f"❌ ストリームの開始に失敗しました: {str(e)}"
+        if error_msg:
+            return None, error_msg
+        return device, None
 
-    def _start_ios_stream(self, device, startupinfo, timeout):
+    def _start_ios_stream(self, device, timeout):
         """go-iosのストリーム（mjpegサーバー）を起動する。成功時はNone、失敗時はユーザー向けメッセージ。"""
-        env = os.environ.copy()
-        env["ENABLE_GO_IOS_AGENT"] = "user"
         p = subprocess.Popen(
             [self.ios, f"--udid={device['id']}", "screenshot", "--stream", f"--port={IOS_STREAM_PORT}"],
-            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-            startupinfo=startupinfo, creationflags=paths.CREATE_NO_WINDOW,
+            env=_go_ios_env(), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            startupinfo=paths.get_startupinfo(), creationflags=paths.CREATE_NO_WINDOW,
         )
         self.processes.append(p)
         self.last_stream_error = None
         # 仕様: docs/spec/bugs/LOCAL-017_ストリーム接続の一時的な切断で自動撮影全体が停止する.md
         # go-ios の標準エラー出力は、以前は破棄していて失敗原因が分からなかったため、監視して切断理由を保持する
-        stderr_thread = threading.Thread(target=self._stream_stderr_to_log, args=(p.stderr,), daemon=True)
+        stderr_thread = threading.Thread(target=self._watch_stream_stderr, args=(p.stderr,), daemon=True)
         stderr_thread.start()
 
         # 固定時間（旧: 1.5秒）待つのではなく、実際にポートが受け付け可能になるまで待つ。
@@ -293,85 +328,7 @@ class DeviceManager:
             return f"❌ iOSストリームの起動に失敗しました（go-iosが終了コード{exit_code}で終了しました）。"
         return "❌ iOSストリームの起動がタイムアウトしました。時間を置いて再度お試しください。"
 
-    def _ios_tunnel_endpoint(self, udid, env):
-        """トンネルの一覧から、端末の接続先 (address, rsdPort) を返す。無ければNone。"""
-        try:
-            res = subprocess.run([self.ios, "tunnel", "ls"], env=env, capture_output=True, text=True, timeout=5,
-                                 creationflags=paths.CREATE_NO_WINDOW)
-            lines = res.stdout.strip().splitlines()
-            for t in (json.loads(lines[-1]) if lines else []):
-                if isinstance(t, dict) and t.get("udid") == udid:
-                    return (t.get("address"), t.get("rsdPort"))
-        except Exception:
-            pass
-        return None
-
-    def recover_ios_connection(self, udid, reason):
-        """iOSの画面取得の失敗から立ち直れそうなら、トンネルを整えてTrueを返す（呼び出し側は1回だけやり直す）。
-
-        仕様: docs/spec/bugs/LOCAL-025_iOSのトンネルに古い接続が残ると撮影を開始できず理由も表示されない.md
-        仕様: docs/spec/native-window.md（終了時にトンネルを止めるため、次の起動直後はトンネルが起動途中のことがある）
-        - トンネル経由で端末に接続できない: トンネルに古い接続が残っているため、起動し直す
-        - トンネルの一覧に端末が無い: トンネルが起動途中のため、準備ができるのを待つ
-          （iOS 16 以前はトンネルを使わないため、待っても載らずFalseになる）
-        """
-        env = os.environ.copy()
-        env["ENABLE_GO_IOS_AGENT"] = "user"
-        if is_ios_tunnel_unreachable(reason):
-            return self.restart_ios_tunnel(udid)
-        if self._ios_tunnel_endpoint(udid, env) is None:
-            add_log("⏳ iOSのトンネルの起動を待っています...")
-            return self._wait_for_ios_tunnel(udid, env)
-        return False
-
-    def _wait_for_ios_tunnel(self, udid, env, exclude=None, timeout=10.0):
-        """トンネルの一覧に、端末の接続（exclude と異なるもの）が載るまで待つ。載ればTrue。
-        一覧を問い合わせると、トンネルが止まっていれば自動で起動する。"""
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            endpoint = self._ios_tunnel_endpoint(udid, env)
-            if endpoint is not None and endpoint != exclude:
-                return True
-            time.sleep(0.5)
-        return False
-
-    def restart_ios_tunnel(self, udid):
-        """go-iosの常駐トンネル（エージェント）を止めて起動し直し、端末の新しい接続ができるまで待つ。できればTrue。
-
-        仕様: docs/spec/bugs/LOCAL-025_iOSのトンネルに古い接続が残ると撮影を開始できず理由も表示されない.md
-        止める命令は古いトンネルが止まる前に返り、しばらくは古い接続先が一覧に残る。古い接続先を使うと
-        また失敗するため、止める前と異なる接続先が一覧に載るまで待つ。実測では約2秒。
-        """
-        add_log("🔄 iOSのトンネルに接続できないため、トンネルを起動し直します...")
-        env = os.environ.copy()
-        env["ENABLE_GO_IOS_AGENT"] = "user"
-        old_endpoint = self._ios_tunnel_endpoint(udid, env)
-        if not self.stop_ios_tunnel():
-            return False
-        if self._wait_for_ios_tunnel(udid, env, exclude=old_endpoint):
-            return True
-        add_log("⚠️ トンネルの起動を待ちましたが、端末の新しい接続を確認できませんでした")
-        return False
-
-    def stop_ios_tunnel(self):
-        """go-iosの常駐トンネル（エージェント）を止める。止める命令を送れたらTrue。
-
-        仕様: docs/spec/native-window.md（終了時の後始末でトンネルも止める）
-        仕様: docs/spec/bugs/LOCAL-025_iOSのトンネルに古い接続が残ると撮影を開始できず理由も表示されない.md
-        仕様: docs/spec/bugs/LOCAL-030_終了時にiOSのトンネルが動いていないとトンネルが起動して残る.md
-        ENABLE_GO_IOS_AGENT を付けると、トンネルが動いていないときに起動してしまい残るため、付けずに送る。
-        """
-        env = os.environ.copy()
-        env.pop("ENABLE_GO_IOS_AGENT", None)
-        try:
-            subprocess.run([self.ios, "tunnel", "stopagent"], env=env, capture_output=True, timeout=10,
-                           creationflags=paths.CREATE_NO_WINDOW)
-            return True
-        except Exception as e:
-            add_log(f"⚠️ トンネルの停止に失敗しました: {e}")
-            return False
-
-    def _stream_stderr_to_log(self, pipe):
+    def _watch_stream_stderr(self, pipe):
         """go-iosの標準エラー出力を監視し、JSON形式のfatal/errorログがあれば、切断時に
         ユーザー向けメッセージへ反映できるよう self.last_stream_error に保持する。
         Live Logsを埋めないよう、通常のログへは転送しない。
@@ -419,6 +376,142 @@ class DeviceManager:
             except Exception:
                 pass
         self.processes.clear()
+
+    # ------------------------------------------------------------------
+    # 1回だけの画面取得
+    # 仕様: docs/spec/manual-capture.md
+    # 自動撮影が停止中の手動撮影は、常時ストリームを新規起動せず、1回分のコマンドだけで画面を取得する
+    # （ストリームの起動・接続待ちを挟まないため、接続が不安定な状況でも失敗しにくい）。
+    # ------------------------------------------------------------------
+    def capture_single_frame(self, device):
+        """指定端末の画面を1回だけ取得してフレーム（numpy配列）を返す。取得できなければNone。"""
+        if device["os"] == "android":
+            return self._android_screenshot_once(device)
+
+        # iOS: 常時ストリームではなく、1回分の screenshot コマンドで一時ファイルに書き出す
+        frame, reason = self._ios_screenshot_once(device)
+        # 仕様: docs/spec/bugs/LOCAL-025_iOSのトンネルに古い接続が残ると撮影を開始できず理由も表示されない.md
+        # 仕様: docs/spec/native-window.md（トンネルが起動途中なら、準備ができるのを待つ）
+        # トンネルを整えられた場合だけ、1回だけやり直す
+        if frame is None and self.recover_ios_connection(device["id"], reason):
+            frame, reason = self._ios_screenshot_once(device)
+        if frame is None:
+            add_log(f"⚠️ iOS screenshot failed: {reason}")
+        return frame
+
+    def _android_screenshot_once(self, device):
+        try:
+            res = _run(self.adb_command(device["id"], "exec-out", "screencap", "-p"), timeout=10)
+            if not res.stdout:
+                add_log(f"⚠️ Android screenshot failed: {_stderr_text(res) or 'no output'}")
+                return None
+            return decode_image(res.stdout)
+        except Exception as e:
+            add_log(f"⚠️ Android screenshot failed: {e}")
+            return None
+
+    def _ios_screenshot_once(self, device):
+        """iOSの画面を1回取得する。(フレーム, 失敗理由) を返す。成功時の失敗理由は None。"""
+        fd, tmp_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        try:
+            cmd = [self.ios, f"--udid={device['id']}", "screenshot", f"--output={tmp_path}"]
+            res = _run(cmd, timeout=15, env=_go_ios_env())
+            frame = cv2.imread(tmp_path)
+            if frame is not None:
+                return frame, None
+            # 仕様: docs/spec/bugs/LOCAL-017_ストリーム接続の一時的な切断で自動撮影全体が停止する.md
+            # 以前はgo-iosの出力を破棄しており、失敗原因が分からなかった
+            stderr = _stderr_text(res)
+            errors = [m for m in (go_ios_error_message(line) for line in stderr.splitlines()) if m]
+            return None, errors[-1] if errors else (stderr or f"exit code {res.returncode}")
+        except Exception as e:
+            return None, str(e)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+    # ------------------------------------------------------------------
+    # iOS のトンネル
+    # ------------------------------------------------------------------
+    def _ios_tunnel_endpoint(self, udid):
+        """トンネルの一覧から、端末の接続先 (address, rsdPort) を返す。無ければNone。
+        一覧を問い合わせると、トンネルが止まっていれば自動で起動する。"""
+        try:
+            res = _run([self.ios, "tunnel", "ls"], timeout=5, env=_go_ios_env(), text=True)
+            lines = res.stdout.strip().splitlines()
+            for t in (json.loads(lines[-1]) if lines else []):
+                if isinstance(t, dict) and t.get("udid") == udid:
+                    return (t.get("address"), t.get("rsdPort"))
+        except Exception:
+            pass
+        return None
+
+    def recover_ios_connection(self, udid, reason):
+        """iOSの画面取得の失敗から立ち直れそうなら、トンネルを整えてTrueを返す（呼び出し側は1回だけやり直す）。
+
+        仕様: docs/spec/bugs/LOCAL-025_iOSのトンネルに古い接続が残ると撮影を開始できず理由も表示されない.md
+        仕様: docs/spec/native-window.md（終了時にトンネルを止めるため、次の起動直後はトンネルが起動途中のことがある）
+        - トンネル経由で端末に接続できない: トンネルに古い接続が残っているため、起動し直す
+        - トンネルの一覧に端末が無い: トンネルが起動途中のため、準備ができるのを待つ
+          （iOS 16 以前はトンネルを使わないため、待っても載らずFalseになる）
+        """
+        if is_ios_tunnel_unreachable(reason):
+            return self.restart_ios_tunnel(udid)
+        if self._ios_tunnel_endpoint(udid) is None:
+            add_log("⏳ iOSのトンネルの起動を待っています...")
+            return self._wait_for_ios_tunnel(udid)
+        return False
+
+    def _wait_for_ios_tunnel(self, udid, exclude=None, timeout=10.0):
+        """トンネルの一覧に、端末の接続（exclude と異なるもの）が載るまで待つ。載ればTrue。"""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            endpoint = self._ios_tunnel_endpoint(udid)
+            if endpoint is not None and endpoint != exclude:
+                return True
+            time.sleep(0.5)
+        return False
+
+    def restart_ios_tunnel(self, udid):
+        """go-iosの常駐トンネル（エージェント）を止めて起動し直し、端末の新しい接続ができるまで待つ。できればTrue。
+
+        仕様: docs/spec/bugs/LOCAL-025_iOSのトンネルに古い接続が残ると撮影を開始できず理由も表示されない.md
+        止める命令は古いトンネルが止まる前に返り、しばらくは古い接続先が一覧に残る。古い接続先を使うと
+        また失敗するため、止める前と異なる接続先が一覧に載るまで待つ。実測では約2秒。
+        """
+        add_log("🔄 iOSのトンネルに接続できないため、トンネルを起動し直します...")
+        old_endpoint = self._ios_tunnel_endpoint(udid)
+        if not self.stop_ios_tunnel():
+            return False
+        if self._wait_for_ios_tunnel(udid, exclude=old_endpoint):
+            return True
+        add_log("⚠️ トンネルの起動を待ちましたが、端末の新しい接続を確認できませんでした")
+        return False
+
+    # ------------------------------------------------------------------
+    # 終了時の後始末
+    # 仕様: docs/spec/native-window.md（終了後も go-ios のトンネル・adb サーバーが動き続けないよう止める）
+    # ------------------------------------------------------------------
+    def stop_ios_tunnel(self):
+        """go-iosの常駐トンネル（エージェント）を止める。止める命令を送れたらTrue。
+
+        仕様: docs/spec/bugs/LOCAL-025_iOSのトンネルに古い接続が残ると撮影を開始できず理由も表示されない.md
+        仕様: docs/spec/bugs/LOCAL-030_終了時にiOSのトンネルが動いていないとトンネルが起動して残る.md
+        """
+        try:
+            _run([self.ios, "tunnel", "stopagent"], timeout=10, env=_go_ios_env(agent=False))
+            return True
+        except Exception as e:
+            add_log(f"⚠️ トンネルの停止に失敗しました: {e}")
+            return False
+
+    def stop_adb_server(self):
+        """adb サーバーを止める。"""
+        try:
+            _run([self.adb, "kill-server"], timeout=5)
+        except Exception as e:
+            print(f"⚠️ adb サーバーの停止に失敗しました: {e}")
 
 
 dev_manager = DeviceManager()

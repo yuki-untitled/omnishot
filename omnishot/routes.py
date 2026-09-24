@@ -1,58 +1,16 @@
-import io
+"""画面からの要求を受け付ける（Flask のエンドポイント）。処理の本体は各モジュールに置く。"""
 import os
-import platform
-import re
-import shutil
-import tempfile
 import threading
 import time
-import zipfile
 
 from flask import render_template, request, jsonify, send_from_directory, send_file, Response
 
-from . import display_names, state
+from . import display_names, state, storage
 from .capture import auto_capture_loop, manual_capture
+from .cleanup import cleanup_on_exit
 from .device_manager import DEVICE_NOT_CONNECTED_MESSAGE, dev_manager
 from .logs import add_log, log_queue, log_condition
 from .paths import SAVE_DIR
-
-
-def _sanitize_filename_component(name):
-    """パス区切り文字・制御文字を取り除く（ZIPエントリ名・ダウンロードファイル名の共通処理）。"""
-    return re.sub(r'[\\/\x00-\x1f]', '', name or '').strip()
-
-
-# 仕様: docs/spec/bugs/LOCAL-009_一括削除・ZIPダウンロードがキャプチャ保存先の外のファイルを扱える.md
-def _is_plain_filename(name):
-    """保存先フォルダ直下の単純なファイル名（ディレクトリ区切り・制御文字を含まない）かどうか。"""
-    return (
-        isinstance(name, str)
-        and name not in ('', '.', '..')
-        and not re.search(r'[\\/\x00-\x1f]', name)
-    )
-
-
-def _all_plain_filenames(filenames):
-    return isinstance(filenames, list) and all(_is_plain_filename(n) for n in filenames)
-
-
-def _arcname_for(filename, display_name):
-    """ZIP内のファイル名を決定する。表示名が未設定ならキャプチャの元ファイル名を使う。"""
-    if not display_name:
-        return filename
-    base = _sanitize_filename_component(display_name)
-    base = re.sub(r'\.png$', '', base, flags=re.IGNORECASE)
-    return f"{base}.png" if base else filename
-
-
-def _sanitize_zip_name(name):
-    """ダウンロードするZIPファイル名を検証する。空・不正な場合は空文字を返す。"""
-    cleaned = _sanitize_filename_component(name)
-    if not cleaned:
-        return ''
-    if not cleaned.lower().endswith('.zip'):
-        cleaned += '.zip'
-    return cleaned
 
 
 def _apply_config_from_args():
@@ -68,24 +26,18 @@ def _sse_event(log_id, msg):
     return f"id: {log_id}\ndata: {safe_msg}\n\n"
 
 
-def _cleanup_temp_data():
-    """終了時に、撮影データの保存先とiOS/Windowsの一時ファイルを削除する。"""
-    # 1. 保存フォルダの削除
-    if os.path.exists(SAVE_DIR):
-        shutil.rmtree(SAVE_DIR)
+def _start_session():
+    """撮影を開始する。
 
-    # 2. iOSキャッシュ（selfidentity.plist）の削除
-    home = os.path.expanduser("~")
-    plist_path = os.path.join(home, "Library/Preferences/com.apple.selfidentity.plist")
-    if os.path.exists(plist_path):
-        os.remove(plist_path)
-
-    # 3. Windows一時ファイルの削除（該当する場合）
-    if platform.system() == "Windows":
-        tmp = tempfile.gettempdir()
-        for item in os.listdir(tmp):
-            if "ios" in item or "adb" in item:
-                shutil.rmtree(os.path.join(tmp, item), ignore_errors=True)
+    仕様: docs/spec/session-grouping.md（開始のたびに新しいセッションを割り当てる）
+    """
+    state.is_running = True
+    state.session_counter += 1
+    state.current_session_id = state.session_counter
+    state.sessions[state.current_session_id] = {"startedAt": time.strftime("%Y/%m/%d %H:%M:%S")}
+    mode_text = "静的" if state.current_config["mode"] == "static" else "動的"
+    add_log(f"📋 モード: {mode_text}")
+    threading.Thread(target=auto_capture_loop, daemon=True).start()
 
 
 def register(app):
@@ -97,6 +49,9 @@ def register(app):
     def help_page():
         return render_template('help.html')
 
+    # ------------------------------------------------------------------
+    # 撮影
+    # ------------------------------------------------------------------
     @app.route('/status')
     def get_status():
         return jsonify({
@@ -120,16 +75,8 @@ def register(app):
     def start():
         _apply_config_from_args()
         state.current_config["device"] = request.args.get('device', '')
-
         if not state.is_running:
-            state.is_running = True
-            # 仕様: docs/spec/session-grouping.md（開始のたびに新しいセッションを割り当てる）
-            state.session_counter += 1
-            state.current_session_id = state.session_counter
-            state.sessions[state.current_session_id] = {"startedAt": time.strftime("%Y/%m/%d %H:%M:%S")}
-            mode_text = "静的" if state.current_config["mode"] == "static" else "動的"
-            add_log(f"📋 モード: {mode_text}")
-            threading.Thread(target=auto_capture_loop, daemon=True).start()
+            _start_session()
         return "Started"
 
     @app.route('/stop')
@@ -137,60 +84,47 @@ def register(app):
         state.is_running = False
         return "Stopped"
 
+    @app.route('/update_settings')
+    def update_settings():
+        # 入力のたびに呼ばれるため、ログには出さない（設定変更自体はstate.current_configに反映される）
+        _apply_config_from_args()
+        return "Updated"
+
     # 仕様: docs/spec/manual-capture.md
     @app.route('/manual_capture', methods=['POST'])
     def manual_capture_route():
-        device_id = request.args.get('device', '')
-        filename, error_msg = manual_capture(device_id)
+        filename, error_msg = manual_capture(request.args.get('device', ''))
         if error_msg:
             # 仕様: docs/spec/device-selection.md（選択した端末が接続されていないときは、画面が一覧を検出し直す）
             return jsonify({"error": error_msg, "device_missing": error_msg == DEVICE_NOT_CONNECTED_MESSAGE}), 400
         return jsonify({"filename": filename})
 
+    # 仕様: docs/spec/native-window.md
     @app.route('/shutdown', methods=['POST'])
     def shutdown():
         state.is_running = False
         dev_manager.stop_stream()
-
-        # 終了時の一般向けログ
         add_log("🛑 システムを終了します。一時データを整理中...")
 
-        def kill_process():
+        def exit_after_cleanup():
             time.sleep(0.5)
-            try:
-                # 仕様: docs/spec/native-window.md（終了後も go-ios の常駐トンネルが動き続けないよう止める）
-                dev_manager.stop_ios_tunnel()
-                # 仕様: docs/spec/native-window.md（終了後も adb サーバーが動き続けないよう止める）
-                dev_manager.stop_adb_server()
-                _cleanup_temp_data()
-                print("🧹 終了処理が完了しました。")
-            except Exception as e:
-                print(f"⚠️ クリーンアップ中にエラーが発生しました: {e}")
-
+            cleanup_on_exit()
             os._exit(0)
 
-        threading.Thread(target=kill_process, daemon=True).start()
+        threading.Thread(target=exit_after_cleanup, daemon=True).start()
         return "Shutdown"
 
+    # ------------------------------------------------------------------
+    # ギャラリー
+    # 仕様: docs/spec/gallery.md
+    # ------------------------------------------------------------------
     @app.route('/images')
     def get_images():
-        images = [f for f in os.listdir(SAVE_DIR) if f.endswith('.png')]
-        def get_mtime_safe(x):
-            try: return os.path.getmtime(os.path.join(SAVE_DIR, x))
-            except FileNotFoundError: return 0
-        images.sort(key=get_mtime_safe, reverse=True)
-        # 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md
-        # 存在するキャプチャファイルの分だけ表示名を返す（削除済みファイルの表示名は含めない）
-        names = display_names.load_all()
-        # 仕様: docs/spec/session-grouping.md
-        # 存在するキャプチャファイルの分だけセッションIDを返す（未登録＝未分類のファイルは含めない）
-        image_sessions = {name: state.image_sessions[name] for name in images if name in state.image_sessions}
-        return jsonify({
-            "images": images,
-            "displayNames": {name: names[name] for name in images if name in names},
-            "imageSessions": image_sessions,
-            "sessions": state.sessions,
-        })
+        return jsonify(storage.gallery_data())
+
+    @app.route('/static/captures/<path:filename>')
+    def serve_image(filename):
+        return send_from_directory(SAVE_DIR, filename)
 
     # 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md
     @app.route('/rename', methods=['POST'])
@@ -199,19 +133,49 @@ def register(app):
         filename = data.get('filename', '')
         if not filename or os.path.basename(filename) != filename:
             return "Invalid filename", 400
-        if not os.path.exists(os.path.join(SAVE_DIR, filename)):
+        if not storage.exists(filename):
             return "File not found", 404
 
         saved_name = display_names.set_display_name(filename, data.get('displayName', ''))
         add_log(f"✏️ 表示名を変更しました: {filename} → {saved_name or filename}")
         return jsonify({"filename": filename, "displayName": saved_name})
 
-    @app.route('/update_settings')
-    def update_settings():
-        # 入力のたびに呼ばれるため、ログには出さない（設定変更自体はstate.current_configに反映される）
-        _apply_config_from_args()
-        return "Updated"
+    @app.route('/clear_all', methods=['POST'])
+    def clear_all():
+        try:
+            storage.clear_all()
+        except Exception as e:
+            return str(e), 500
+        add_log("🗑️ 全ての画像を削除しました")
+        return "Cleared"
 
+    @app.route('/delete_selected', methods=['POST'])
+    def delete_selected():
+        filenames = (request.json or {}).get('filenames', [])
+        # 仕様: docs/spec/bugs/LOCAL-009_一括削除・ZIPダウンロードがキャプチャ保存先の外のファイルを扱える.md
+        # 1件でも不正な名前を含む場合は、何も削除せずリクエスト全体を拒否する
+        if not storage.all_plain_filenames(filenames):
+            return "Invalid filename", 400
+        storage.delete_images(filenames)
+        add_log(f"🗑️ 選択された {len(filenames)} 件の画像を削除しました")
+        return "Deleted"
+
+    # 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md
+    @app.route('/download_selected', methods=['POST'])
+    def download_selected():
+        data = request.json or {}
+        filenames = data.get('filenames', [])
+        if not filenames: return "No files selected", 400
+        # 仕様: docs/spec/bugs/LOCAL-009_一括削除・ZIPダウンロードがキャプチャ保存先の外のファイルを扱える.md
+        if not storage.all_plain_filenames(filenames):
+            return "Invalid filename", 400
+
+        memory_file, zip_name = storage.build_zip(filenames, data.get('zipName', ''))
+        return send_file(memory_file, mimetype='application/zip', as_attachment=True, download_name=zip_name)
+
+    # ------------------------------------------------------------------
+    # ログ
+    # ------------------------------------------------------------------
     @app.route('/logs/stream')
     def stream_logs():
         last_sent_id = int(request.headers.get('Last-Event-ID', '0') or 0)
@@ -236,63 +200,3 @@ def register(app):
         response = jsonify([msg for _, msg in list(log_queue)])
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         return response
-
-    @app.route('/static/captures/<path:filename>')
-    def serve_image(filename):
-        return send_from_directory(SAVE_DIR, filename)
-
-    @app.route('/clear_all', methods=['POST'])
-    def clear_all():
-        try:
-            for filename in os.listdir(SAVE_DIR):
-                file_path = os.path.join(SAVE_DIR, filename)
-                if os.path.isfile(file_path): os.unlink(file_path)
-            # 仕様: docs/spec/session-grouping.md（削除済みファイルのセッション対応づけは残さない）
-            state.image_sessions.clear()
-            add_log("🗑️ 全ての画像を削除しました")
-            return "Cleared"
-        except Exception as e: return str(e), 500
-
-    @app.route('/delete_selected', methods=['POST'])
-    def delete_selected():
-        data = request.json or {}
-        filenames = data.get('filenames', [])
-        # 仕様: docs/spec/bugs/LOCAL-009_一括削除・ZIPダウンロードがキャプチャ保存先の外のファイルを扱える.md
-        # 1件でも不正な名前を含む場合は、何も削除せずリクエスト全体を拒否する
-        if not _all_plain_filenames(filenames):
-            return "Invalid filename", 400
-        for name in filenames:
-            path = os.path.join(SAVE_DIR, name)
-            if os.path.exists(path): os.remove(path)
-        # 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md（削除との整合性）
-        display_names.remove_display_names(filenames)
-        # 仕様: docs/spec/session-grouping.md（削除済みファイルのセッション対応づけは残さない）
-        for name in filenames:
-            state.image_sessions.pop(name, None)
-        add_log(f"🗑️ 選択された {len(filenames)} 件の画像を削除しました")
-        return "Deleted"
-
-    # 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md
-    @app.route('/download_selected', methods=['POST'])
-    def download_selected():
-        data = request.json or {}
-        filenames = data.get('filenames', [])
-        if not filenames: return "No files selected", 400
-        # 仕様: docs/spec/bugs/LOCAL-009_一括削除・ZIPダウンロードがキャプチャ保存先の外のファイルを扱える.md
-        if not _all_plain_filenames(filenames):
-            return "Invalid filename", 400
-
-        names = display_names.load_all()
-        memory_file = io.BytesIO()
-        with zipfile.ZipFile(memory_file, 'w') as zf:
-            for name in filenames:
-                path = os.path.join(SAVE_DIR, name)
-                if os.path.exists(path):
-                    zf.write(path, arcname=_arcname_for(name, names.get(name)))
-        memory_file.seek(0)
-
-        zip_name = _sanitize_zip_name(data.get('zipName', ''))
-        if not zip_name:
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            zip_name = f'captures_{timestamp}.zip'
-        return send_file(memory_file, mimetype='application/zip', as_attachment=True, download_name=zip_name)
