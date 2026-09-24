@@ -13,6 +13,8 @@ body {
     padding: 20px;
     box-sizing: border-box;
     min-height: 100vh;
+    /* ダークテーマのため、数値入力欄の増減矢印など、OS標準のフォーム部品もダーク配色にする */
+    color-scheme: dark;
 }
 
 *, *:before, *:after {
@@ -297,6 +299,12 @@ input[type="number"] {
     color: white;
 }
 
+/* 仕様: docs/spec/manual-capture.md */
+.manual-capture {
+    background: #3498db;
+    color: white;
+}
+
 .btn-danger {
     background: #dc3545;
     color: white;
@@ -369,6 +377,20 @@ input[type="number"] {
     width: 20px;
     height: 20px;
     accent-color: #2ecc71;
+}
+
+/* 仕様: docs/spec/manual-capture.md（手動撮影で保存された画像であることを示すバッジ） */
+.manual-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 10;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: #3498db;
+    color: #fff;
+    font-size: 10px;
+    font-weight: bold;
 }
 
 

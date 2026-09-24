@@ -1,4 +1,5 @@
 import collections
+import threading
 
 # 仕様: docs/spec/screenshot-capture.md
 # 他モジュールからは必ず `from omnishot import state` した上で
@@ -18,3 +19,11 @@ current_config = {
     # 仕様: docs/spec/device-selection.md（撮影する端末の識別子。空なら端末が1台のときだけ自動で使う）
     "device": "",
 }
+
+# 仕様: docs/spec/manual-capture.md
+# 自動撮影が「撮影中」の間、手動撮影が同じ受信中フレームを使えるようにするための参照。
+# 撮影中でなければ None。
+active_receiver = None
+active_device = None
+# 手動撮影の連打による多重保存を防ぐためのロック。
+manual_capture_lock = threading.Lock()

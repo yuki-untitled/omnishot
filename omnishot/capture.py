@@ -1,11 +1,13 @@
 # 仕様: docs/spec/screenshot-capture.md
 import os
+import subprocess
+import tempfile
 import time
 
 import cv2
 import numpy as np
 
-from . import state
+from . import paths, state
 from .device_manager import dev_manager
 from .logs import add_log
 from .paths import SAVE_DIR
@@ -21,14 +23,82 @@ def _create_receiver(device):
     return iOSStreamReceiver("http://127.0.0.1:3333")
 
 
-def _save_frame(frame, device_type, prefix):
-    """フレームをキャプチャ保存先へPNGとして保存し、保存したファイル名を返す。"""
+def _save_frame(frame, device_type, prefix, manual=False):
+    """フレームをキャプチャ保存先へPNGとして保存し、保存したファイル名を返す。
+
+    仕様: docs/spec/manual-capture.md（手動撮影は "Manual_" を付けて自動撮影と区別する）
+    """
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     device_label = DEVICE_LABELS.get(device_type.lower(), device_type.capitalize())
-    final_name = f"{prefix}_{device_label}_{timestamp}.png" if prefix else f"{device_label}_{timestamp}.png"
+    manual_marker = "Manual_" if manual else ""
+    final_name = f"{prefix}_{manual_marker}{device_label}_{timestamp}.png" if prefix else f"{manual_marker}{device_label}_{timestamp}.png"
     cv2.imwrite(os.path.join(SAVE_DIR, final_name), frame)
     add_log(f"📸 撮影完了: {final_name}")
     return final_name
+
+
+# 仕様: docs/spec/manual-capture.md
+# 自動撮影が停止中の手動撮影は、常時ストリームを新規起動せず、1回分のコマンドだけで画面を取得する
+# （ストリームの起動・接続待ちを挟まないため、接続が不安定な状況でも失敗しにくい）。
+def _capture_single_frame(device):
+    """指定端末の画面を1回だけ取得してフレーム（numpy配列）を返す。取得できなければNone。"""
+    if device["os"] == "android":
+        try:
+            cmd = [dev_manager.adb, "-s", device["id"], "exec-out", "screencap", "-p"]
+            res = subprocess.run(cmd, capture_output=True, timeout=10, creationflags=paths.CREATE_NO_WINDOW)
+            if not res.stdout:
+                stderr = res.stderr.decode('utf-8', errors='replace').strip() if res.stderr else ""
+                add_log(f"⚠️ Android screenshot failed: {stderr or 'no output'}")
+                return None
+            return cv2.imdecode(np.frombuffer(res.stdout, dtype=np.uint8), cv2.IMREAD_COLOR)
+        except Exception as e:
+            add_log(f"⚠️ Android screenshot failed: {e}")
+            return None
+
+    # iOS: 常時ストリームではなく、1回分の screenshot コマンドで一時ファイルに書き出す
+    fd, tmp_path = tempfile.mkstemp(suffix=".png")
+    os.close(fd)
+    try:
+        env = os.environ.copy()
+        env["ENABLE_GO_IOS_AGENT"] = "user"
+        cmd = [dev_manager.ios, f"--udid={device['id']}", "screenshot", f"--output={tmp_path}"]
+        res = subprocess.run(cmd, env=env, capture_output=True, timeout=15, creationflags=paths.CREATE_NO_WINDOW)
+        frame = cv2.imread(tmp_path)
+        if frame is None:
+            add_log(f"⚠️ iOS screenshot failed: exit code {res.returncode}")
+        return frame
+    except Exception as e:
+        add_log(f"⚠️ iOS screenshot failed: {e}")
+        return None
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
+def manual_capture(device_id):
+    """手動撮影を1回だけ行い、保存したファイル名を返す。失敗時は (None, エラーメッセージ)。"""
+    if not state.manual_capture_lock.acquire(blocking=False):
+        return None, "❌ 手動撮影を処理中です。少し待ってから押してください。"
+
+    try:
+        # 自動撮影が動作中なら、その受信中のフレームをそのまま使う（新たにストリームは開始しない）
+        if state.is_running and state.active_receiver is not None:
+            frame = state.active_receiver.latest_frame
+            if frame is None:
+                return None, "❌ 画面を取得できませんでした。時間を置いて再度お試しください。"
+            return _save_frame(frame, state.active_device["os"], state.current_config["prefix"], manual=True), None
+
+        # 自動撮影が停止中の場合は、端末を決めて1回分だけ画面を取得する
+        device, error_msg = dev_manager.resolve_device(device_id)
+        if not device:
+            return None, error_msg
+
+        frame = _capture_single_frame(device)
+        if frame is None:
+            return None, "❌ 画面を取得できませんでした。時間を置いて再度お試しください。"
+        return _save_frame(frame, device["os"], state.current_config["prefix"], manual=True), None
+    finally:
+        state.manual_capture_lock.release()
 
 
 def _set_baseline(frame):
@@ -91,6 +161,9 @@ def auto_capture_loop():
 
     device_type = device["os"]
     receiver = _create_receiver(device)
+    # 仕様: docs/spec/manual-capture.md（撮影中の手動撮影が同じ受信中フレームを使えるようにする）
+    state.active_receiver = receiver
+    state.active_device = device
     receiver.start()
     time.sleep(0.5)
     last_frame_seq = None
@@ -190,3 +263,6 @@ def auto_capture_loop():
 
     receiver.stop()
     dev_manager.stop_stream()
+    # 仕様: docs/spec/manual-capture.md（撮影中の手動撮影が同じ受信中フレームを使えるようにする）
+    state.active_receiver = None
+    state.active_device = None

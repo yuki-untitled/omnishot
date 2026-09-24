@@ -11,7 +11,7 @@ import zipfile
 from flask import render_template, request, jsonify, send_from_directory, send_file, Response
 
 from . import display_names, state
-from .capture import auto_capture_loop
+from .capture import auto_capture_loop, manual_capture
 from .device_manager import dev_manager
 from .logs import add_log, log_queue, log_condition
 from .paths import SAVE_DIR
@@ -126,6 +126,15 @@ def register(app):
     def stop():
         state.is_running = False
         return "Stopped"
+
+    # 仕様: docs/spec/manual-capture.md
+    @app.route('/manual_capture', methods=['POST'])
+    def manual_capture_route():
+        device_id = request.args.get('device', '')
+        filename, error_msg = manual_capture(device_id)
+        if error_msg:
+            return jsonify({"error": error_msg}), 400
+        return jsonify({"filename": filename})
 
     @app.route('/shutdown', methods=['POST'])
     def shutdown():

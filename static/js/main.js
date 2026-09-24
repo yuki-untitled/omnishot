@@ -20,6 +20,7 @@ const elJudgeCount = document.getElementById('judgeCount');
 const elModeSelect = document.getElementById('modeSelect');
 const elDeviceSelect = document.getElementById('deviceSelect');
 const elRefreshDevicesBtn = document.getElementById('refreshDevicesBtn');
+const elManualCaptureBtn = document.getElementById('manualCaptureBtn');
 const elDeviceFilter = document.getElementById('deviceFilter');
 const elSortSelect = document.getElementById('sortSelect');
 const elStatus = document.getElementById('status');
@@ -179,6 +180,11 @@ function updateGallery() {
         });
 }
 
+// 仕様: docs/spec/manual-capture.md（ファイル名先頭の "Manual_" を除いた部分でOS種別を判定する）
+function deviceTypeOf(img) {
+    return img.toLowerCase().replace(/^manual_/, '');
+}
+
 // ギャラリーUIの生成・描画
 function refreshGalleryUI() {
     if (!elGallery) return;
@@ -189,7 +195,7 @@ function refreshGalleryUI() {
     // 1. まずフィルタリングしてからソートする
     let filteredImages = allImages.filter(img => {
         if (filterValue === 'all') return true;
-        return img.toLowerCase().startsWith(filterValue); // "ios_..." や "android_..." で判定
+        return deviceTypeOf(img).startsWith(filterValue); // "ios_..." や "android_..." で判定
     });
 
     // 2. ソート
@@ -198,22 +204,26 @@ function refreshGalleryUI() {
     });
 
     const timestamp = Date.now();
-    elGallery.innerHTML = filteredImages.map(img => {
+    const html = [];
+    filteredImages.forEach(img => {
         const displayName = displayNames[img] || img.replace(/\.png$/i, '');
         const isSelected = selectedFiles.has(img);
-        
-        return `
+        const isManual = /^manual_/i.test(img);
+
+        html.push(`
             <div class="card ${isSelected ? 'selected' : ''}" data-filename="${img}">
-                <input type="checkbox" class="select-checkbox" 
-                    ${isSelected ? 'checked' : ''} 
+                ${isManual ? '<span class="manual-badge">手動</span>' : ''}
+                <input type="checkbox" class="select-checkbox"
+                    ${isSelected ? 'checked' : ''}
                     onclick="toggleSelect('${img}')">
                 <img src="/static/captures/${img}?t=${timestamp}" onclick="openPreview('${img}')" style="cursor: pointer;">
                 <div class="card-info">
                     <span class="display-name" data-filename="${img}">${escapeHtml(displayName)}</span>
                 </div>
             </div>
-        `;
-    }).join('');
+        `);
+    });
+    elGallery.innerHTML = html.join('');
 }
 
 // 選択状態の切り替え
@@ -494,6 +504,26 @@ elStartBtn.addEventListener('click', () => {
 });
 
 elRefreshDevicesBtn.addEventListener('click', loadDevices);
+
+// 仕様: docs/spec/manual-capture.md
+// 端末の選択検証（未選択・未接続）はサーバー側（dev_manager.resolve_device）の判定に委ねる。
+// 処理中はボタンを無効化し、連打による多重保存を防ぐ。
+elManualCaptureBtn.addEventListener('click', () => {
+    elManualCaptureBtn.disabled = true;
+    fetch(`/manual_capture?device=${encodeURIComponent(elDeviceSelect.value)}`, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                alert(data.error);
+            } else {
+                updateGallery();
+            }
+        })
+        .catch(err => console.error("Manual capture error:", err))
+        .finally(() => {
+            elManualCaptureBtn.disabled = false;
+        });
+});
 
 elStopBtn.addEventListener('click', () => {
     fetch('/stop')

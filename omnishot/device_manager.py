@@ -127,14 +127,13 @@ class DeviceManager:
             pass
         return None
 
-    def start_stream(self, device_id=""):
-        """撮影する端末を決めてストリームを開始する。成功時は ({"id", "os"}, None)、失敗時は (None, メッセージ)。
+    def resolve_device(self, device_id=""):
+        """撮影する端末を、一覧と選択状態から1台に決める。成功時は ({"id", "os", "name"}, None)、失敗時は (None, メッセージ)。
 
         device_id が空の場合は、端末が1台のときだけその端末を使う。
+        仕様: docs/spec/device-selection.md
         """
-        self.cleanup_all_processes()
         devices = self.list_devices()
-        startupinfo = paths.get_startupinfo()
 
         if not devices:
             time.sleep(1.0)
@@ -144,15 +143,26 @@ class DeviceManager:
                     return None, "❌ 選択した端末が接続されていません。ケーブルを確認してください。"
                 return None, "❌ デバイスが検出されませんでした。ケーブルを確認してください。"
 
-        # 仕様: docs/spec/device-selection.md
         if device_id:
             device = next((d for d in devices if d["id"] == device_id), None)
             if device is None:
                 return None, "❌ 選択した端末が接続されていません。ケーブルを確認してください。"
-        elif len(devices) == 1:
-            device = devices[0]
-        else:
-            return None, "❌ 撮影する端末を選択してください。"
+            return device, None
+        if len(devices) == 1:
+            return devices[0], None
+        return None, "❌ 撮影する端末を選択してください。"
+
+    def start_stream(self, device_id=""):
+        """撮影する端末を決めてストリームを開始する。成功時は ({"id", "os"}, None)、失敗時は (None, メッセージ)。
+
+        device_id が空の場合は、端末が1台のときだけその端末を使う。
+        """
+        self.cleanup_all_processes()
+        startupinfo = paths.get_startupinfo()
+
+        device, error_msg = self.resolve_device(device_id)
+        if not device:
+            return None, error_msg
 
         try:
             if device["os"] == "ios":
