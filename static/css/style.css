@@ -393,6 +393,17 @@ input[type="number"] {
     font-weight: bold;
 }
 
+/* 仕様: docs/spec/session-grouping.md（ギャラリー内のセッション区切り見出し） */
+.session-heading {
+    grid-column: 1 / -1;
+    margin: 4px 0 -2px;
+    padding: 4px 2px;
+    color: #9a9a9a;
+    font-size: 13px;
+    font-weight: bold;
+    border-bottom: 1px solid #333;
+}
+
 
 /* ==========================================================================
    7. プレビューモーダル

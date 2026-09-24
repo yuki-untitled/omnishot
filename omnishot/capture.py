@@ -27,12 +27,15 @@ def _save_frame(frame, device_type, prefix, manual=False):
     """フレームをキャプチャ保存先へPNGとして保存し、保存したファイル名を返す。
 
     仕様: docs/spec/manual-capture.md（手動撮影は "Manual_" を付けて自動撮影と区別する）
+    仕様: docs/spec/session-grouping.md（実行中のセッションがあれば、その画像として記録する）
     """
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     device_label = DEVICE_LABELS.get(device_type.lower(), device_type.capitalize())
     manual_marker = "Manual_" if manual else ""
     final_name = f"{prefix}_{manual_marker}{device_label}_{timestamp}.png" if prefix else f"{manual_marker}{device_label}_{timestamp}.png"
     cv2.imwrite(os.path.join(SAVE_DIR, final_name), frame)
+    if state.current_session_id is not None:
+        state.image_sessions[final_name] = state.current_session_id
     add_log(f"📸 撮影完了: {final_name}")
     return final_name
 
@@ -153,6 +156,8 @@ def auto_capture_loop():
         state.last_error = error_msg
         add_log(f"{error_msg}")
         state.is_running = False
+        # 仕様: docs/spec/session-grouping.md（セッション終了の後始末）
+        state.current_session_id = None
         return
 
     add_log("▶️ 自動撮影を開始しました")
@@ -266,3 +271,6 @@ def auto_capture_loop():
     # 仕様: docs/spec/manual-capture.md（撮影中の手動撮影が同じ受信中フレームを使えるようにする）
     state.active_receiver = None
     state.active_device = None
+
+    # 仕様: docs/spec/session-grouping.md（セッション終了の後始末）
+    state.current_session_id = None

@@ -7,6 +7,9 @@ let selectedFiles = new Set();
 let allImages = [];
 let currentPreviewIndex = 0;
 let displayNames = {};
+// 仕様: docs/spec/session-grouping.md（ファイル名 -> セッションID、セッションID -> セッション情報）
+let imageSessions = {};
+let sessions = {};
 let devices = [];
 let isCapturing = false;
 let isLoadingDevices = false;
@@ -170,6 +173,9 @@ function updateGallery() {
                 currentImagesJson = newJson;
                 allImages = data.images;
                 displayNames = data.displayNames || {};
+                // 仕様: docs/spec/session-grouping.md
+                imageSessions = data.imageSessions || {};
+                sessions = data.sessions || {};
                 refreshGalleryUI();
             }
             setTimeout(updateGallery, 1500);
@@ -183,6 +189,24 @@ function updateGallery() {
 // 仕様: docs/spec/manual-capture.md（ファイル名先頭の "Manual_" を除いた部分でOS種別を判定する）
 function deviceTypeOf(img) {
     return img.toLowerCase().replace(/^manual_/, '');
+}
+
+// 仕様: docs/spec/session-grouping.md
+// 画像が属するセッションを表すキー（未登録＝未分類）。連続する同じキーを1つの区切りにまとめる。
+function sessionGroupKey(img) {
+    const sessionId = imageSessions[img];
+    return sessionId === undefined ? 'unclassified' : `session:${sessionId}`;
+}
+
+function sessionHeadingHtml(img) {
+    const sessionId = imageSessions[img];
+    if (sessionId === undefined) {
+        const count = allImages.filter(name => imageSessions[name] === undefined).length;
+        return `<div class="session-heading">未分類（${count}枚）</div>`;
+    }
+    const info = sessions[sessionId] || {};
+    const count = allImages.filter(name => imageSessions[name] === sessionId).length;
+    return `<div class="session-heading">セッション${sessionId}（${escapeHtml(info.startedAt || '')} - ${count}枚）</div>`;
 }
 
 // ギャラリーUIの生成・描画
@@ -203,9 +227,23 @@ function refreshGalleryUI() {
         return sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b);
     });
 
+    // 3. 「未分類」は撮影時刻に関わらず常に末尾へまとめる（セッションの一覧を確認しやすくするため）
+    // 仕様: docs/spec/session-grouping.md
+    const sessionImages = filteredImages.filter(img => imageSessions[img] !== undefined);
+    const unclassifiedImages = filteredImages.filter(img => imageSessions[img] === undefined);
+    const orderedImages = sessionImages.concat(unclassifiedImages);
+
+    // 4. セッションの区切りを挿入しながら描画（各セッション内の並び順は変えない）
     const timestamp = Date.now();
+    let previousGroupKey = null;
     const html = [];
-    filteredImages.forEach(img => {
+    orderedImages.forEach(img => {
+        const groupKey = sessionGroupKey(img);
+        if (groupKey !== previousGroupKey) {
+            html.push(sessionHeadingHtml(img));
+            previousGroupKey = groupKey;
+        }
+
         const displayName = displayNames[img] || img.replace(/\.png$/i, '');
         const isSelected = selectedFiles.has(img);
         const isManual = /^manual_/i.test(img);

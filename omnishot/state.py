@@ -27,3 +27,14 @@ active_receiver = None
 active_device = None
 # 手動撮影の連打による多重保存を防ぐためのロック。
 manual_capture_lock = threading.Lock()
+
+# 仕様: docs/spec/session-grouping.md
+# いずれもアプリを終了すると失われる（永続化しない）。
+# 次に開始するセッションへ振る番号のカウンタ。
+session_counter = 0
+# 実行中のセッションID。Noneの間に撮影された画像は「未分類」として扱う。
+current_session_id = None
+# セッションID -> {"startedAt": "YYYY/MM/DD HH:MM:SS"}
+sessions = {}
+# ファイル名 -> セッションID（未登録のファイルは「未分類」）
+image_sessions = {}

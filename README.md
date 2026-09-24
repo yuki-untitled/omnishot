@@ -9,6 +9,7 @@ OmniShot は、iOS および Android 端末の画面変化を検知し、自動�
 * **2つの自動撮影モード:** 静的モード／動的モードで、画面の変化や静止を検知して自動撮影。
 * **手動撮影:** 自動検知に加えて、任意のタイミングでシャッターを切ることも可能。
 * **Web UI ギャラリー:** キャプチャした画像をブラウザ上でリアルタイムに確認・管理。
+* **撮影セッションのグルーピング:** 撮影の開始〜停止を1セッションとしてギャラリー上で区切り表示。
 * **表示名の編集:** ギャラリー上で任意の表示名に変更可能。サーバー側に永続化される。
 
 詳細な機能仕様は以下を参照してください。
@@ -17,6 +18,7 @@ OmniShot は、iOS および Android 端末の画面変化を検知し、自動�
 * [docs/spec/device-selection.md](docs/spec/device-selection.md) — 撮影端末の選択
 * [docs/spec/manual-capture.md](docs/spec/manual-capture.md) — 手動撮影
 * [docs/spec/gallery.md](docs/spec/gallery.md) — Web UI ギャラリー・表示名編集
+* [docs/spec/session-grouping.md](docs/spec/session-grouping.md) — 撮影セッションのグルーピング
 * [docs/spec/native-window.md](docs/spec/native-window.md) — ネイティブウィンドウ化
 
 ## 📚 ドキュメント

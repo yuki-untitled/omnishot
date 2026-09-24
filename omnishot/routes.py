@@ -117,6 +117,10 @@ def register(app):
 
         if not state.is_running:
             state.is_running = True
+            # 仕様: docs/spec/session-grouping.md（開始のたびに新しいセッションを割り当てる）
+            state.session_counter += 1
+            state.current_session_id = state.session_counter
+            state.sessions[state.current_session_id] = {"startedAt": time.strftime("%Y/%m/%d %H:%M:%S")}
             mode_text = "静的" if state.current_config["mode"] == "static" else "動的"
             add_log(f"📋 モード: {mode_text}")
             threading.Thread(target=auto_capture_loop, daemon=True).start()
@@ -167,9 +171,14 @@ def register(app):
         # 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md
         # 存在するキャプチャファイルの分だけ表示名を返す（削除済みファイルの表示名は含めない）
         names = display_names.load_all()
+        # 仕様: docs/spec/session-grouping.md
+        # 存在するキャプチャファイルの分だけセッションIDを返す（未登録＝未分類のファイルは含めない）
+        image_sessions = {name: state.image_sessions[name] for name in images if name in state.image_sessions}
         return jsonify({
             "images": images,
             "displayNames": {name: names[name] for name in images if name in names},
+            "imageSessions": image_sessions,
+            "sessions": state.sessions,
         })
 
     # 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md
@@ -227,6 +236,8 @@ def register(app):
             for filename in os.listdir(SAVE_DIR):
                 file_path = os.path.join(SAVE_DIR, filename)
                 if os.path.isfile(file_path): os.unlink(file_path)
+            # 仕様: docs/spec/session-grouping.md（削除済みファイルのセッション対応づけは残さない）
+            state.image_sessions.clear()
             add_log("🗑️ 全ての画像を削除しました")
             return "Cleared"
         except Exception as e: return str(e), 500
@@ -244,6 +255,9 @@ def register(app):
             if os.path.exists(path): os.remove(path)
         # 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md（削除との整合性）
         display_names.remove_display_names(filenames)
+        # 仕様: docs/spec/session-grouping.md（削除済みファイルのセッション対応づけは残さない）
+        for name in filenames:
+            state.image_sessions.pop(name, None)
         add_log(f"🗑️ 選択された {len(filenames)} 件の画像を削除しました")
         return "Deleted"
 
