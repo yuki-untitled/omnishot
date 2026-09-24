@@ -234,7 +234,10 @@ def auto_capture_loop():
             # 【改善2】変化検知は 1 回のみ。sleep は外す
             changed = process_frame_changed(frame, use_moving_average=(conf["mode"] == "static"))
 
-            frames_needed = max(1, int(conf["settling"] / conf["interval"]))
+            # 仕様: docs/spec/bugs/LOCAL-022_動的モードで判定回数が設定より1回少なくなる組み合わせがある.md
+            # 動的モードでは settling = チェック間隔 × 判定回数 が送られてくる。小数の誤差で
+            # 割り算が 2.9999… になることがあるため、切り捨てではなく四捨五入で回数に戻す
+            frames_needed = max(1, round(conf["settling"] / conf["interval"]))
 
             # ==========================================
             # 🟢 静的モードの仕様

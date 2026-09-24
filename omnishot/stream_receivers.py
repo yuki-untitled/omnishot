@@ -62,6 +62,10 @@ class iOSStreamReceiver(_FrameReceiver):
                             else:
                                 break
             except Exception as e:
+                # 仕様: docs/spec/bugs/LOCAL-021_停止を押すとiOSの切断の警告が表示される.md
+                # 停止した後のエラーは、go-ios の終了で通信が切れただけなので切断として扱わない
+                if not self.running:
+                    break
                 # 接続が切れたらエラーを記録し、runningをFalseにしてループを終了させる
                 add_log(f"⚠️ iOS device disconnected: {e}")
                 self.last_error = "⚠️ iOSデバイスとの接続が切れました"
