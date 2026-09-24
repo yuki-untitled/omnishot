@@ -8,10 +8,31 @@ import plistlib
 import socket
 import struct
 import subprocess
+import threading
 import time
 
 from . import paths
 from .logs import add_log
+
+# iOSストリーム（mjpegサーバー）が待ち受けるポート。capture.py の受信側もこれを参照する。
+IOS_STREAM_PORT = 3333
+
+
+# 仕様: docs/spec/bugs/LOCAL-017_ストリーム接続の一時的な切断で自動撮影全体が停止する.md
+def _wait_for_port(host, port, timeout, process=None):
+    """指定ポートが接続を受け付けるようになるまで待つ。processを渡すと、途中でプロセスが
+    終了した場合はタイムアウトを待たずに諦める。準備できればTrue、できなければFalse。
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if process is not None and process.poll() is not None:
+            return False
+        try:
+            with socket.create_connection((host, port), timeout=0.3):
+                return True
+        except OSError:
+            time.sleep(0.1)
+    return False
 
 
 def _recv_exact(sock, size):
@@ -54,6 +75,11 @@ class DeviceManager:
     def __init__(self):
         # 属性の定義は必ずここで行います
         self.processes = []
+        # 仕様: docs/spec/bugs/LOCAL-017_ストリーム接続の一時的な切断で自動撮影全体が停止する.md
+        # go-iosの標準エラー出力から拾った、直近の致命的エラーの内容（無ければNone）。
+        # HTTP接続が切れた際のメッセージ（例:「Remote end closed connection without response」）
+        # だけでは原因が分からないため、可能ならこちらをユーザー向けエラーに反映する。
+        self.last_stream_error = None
 
         if platform.system() == "Windows":
             self.adb = os.path.join(paths.base_path, "bin", "win", "adb.exe")
@@ -169,11 +195,25 @@ class DeviceManager:
                 add_log("📱 iOS ストリーム接続を開始します...")
                 env = os.environ.copy()
                 env["ENABLE_GO_IOS_AGENT"] = "user"
-                p = subprocess.Popen([self.ios, f"--udid={device['id']}", "screenshot", "--stream", "--port=3333"],
-                    env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, startupinfo=startupinfo, creationflags=paths.CREATE_NO_WINDOW
+                p = subprocess.Popen(
+                    [self.ios, f"--udid={device['id']}", "screenshot", "--stream", f"--port={IOS_STREAM_PORT}"],
+                    env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                    startupinfo=startupinfo, creationflags=paths.CREATE_NO_WINDOW,
                 )
                 self.processes.append(p)
-                time.sleep(1.5)
+                self.last_stream_error = None
+                # 仕様: docs/spec/bugs/LOCAL-017_ストリーム接続の一時的な切断で自動撮影全体が停止する.md
+                # go-ios の標準エラー出力は、以前は破棄していて失敗原因が分からなかったため、監視して切断理由を保持する
+                threading.Thread(target=self._stream_stderr_to_log, args=(p.stderr,), daemon=True).start()
+
+                # 固定時間（旧: 1.5秒）待つのではなく、実際にポートが受け付け可能になるまで待つ。
+                # 起動が遅い端末では固定時間では足りず、逆に起動が速い場合は待ちすぎになっていた。
+                if not _wait_for_port("127.0.0.1", IOS_STREAM_PORT, timeout=5.0, process=p):
+                    exit_code = p.poll()
+                    self.cleanup_all_processes()
+                    if exit_code is not None:
+                        return None, f"❌ iOSストリームの起動に失敗しました（go-iosが終了コード{exit_code}で終了しました）。"
+                    return None, "❌ iOSストリームの起動がタイムアウトしました。時間を置いて再度お試しください。"
                 return device, None
 
             # Androidは AndroidScreencapReceiver が `adb exec-out screencap` を
@@ -185,16 +225,53 @@ class DeviceManager:
             add_log(f"詳細エラー: {type(e).__name__}: {str(e)}")
             return None, f"❌ ストリームの開始に失敗しました: {str(e)}"
 
+    def _stream_stderr_to_log(self, pipe):
+        """go-iosの標準エラー出力を監視し、JSON形式のfatal/errorログがあれば、切断時に
+        ユーザー向けメッセージへ反映できるよう self.last_stream_error に保持する。
+        Live Logsを埋めないよう、通常のログへは転送しない。
+
+        仕様: docs/spec/bugs/LOCAL-017_ストリーム接続の一時的な切断で自動撮影全体が停止する.md
+        """
+        try:
+            for raw_line in iter(pipe.readline, b''):
+                line = raw_line.decode('utf-8', errors='replace').rstrip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    if data.get("level") in ("fatal", "error"):
+                        self.last_stream_error = data.get("msg") or line
+                except (ValueError, AttributeError):
+                    pass
+        except Exception:
+            pass
+        finally:
+            try:
+                pipe.close()
+            except Exception:
+                pass
+
     def stop_stream(self):
         """ストリームプロセスを安全にクローズ（クラス内で完結）"""
         self.cleanup_all_processes()
         add_log("🔌 ストリーム接続を閉じました")
 
     def cleanup_all_processes(self):
-        """管理している全プロセスを終了"""
+        """管理している全プロセスを終了。
+
+        仕様: docs/spec/bugs/LOCAL-017_ストリーム接続の一時的な切断で自動撮影全体が停止する.md
+        terminate()で終わらない場合はkill()で確実に終了させる。終了し切れずポートを
+        握ったままのプロセスが残ると、次回のストリーム起動が不安定になるため。
+        """
         for p in self.processes:
             try:
                 p.terminate()
+                p.wait(timeout=1)
+                continue
+            except Exception:
+                pass
+            try:
+                p.kill()
                 p.wait(timeout=1)
             except Exception:
                 pass

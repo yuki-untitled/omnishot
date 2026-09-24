@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 
 from . import paths, state
-from .device_manager import dev_manager
+from .device_manager import IOS_STREAM_PORT, dev_manager
 from .logs import add_log
 from .paths import SAVE_DIR
 from .stream_receivers import AndroidScreencapReceiver, iOSStreamReceiver
@@ -20,7 +20,7 @@ DEVICE_LABELS = {"ios": "iOS", "android": "Android"}
 def _create_receiver(device):
     if device["os"] == "android":
         return AndroidScreencapReceiver(dev_manager.adb, device["id"])
-    return iOSStreamReceiver("http://127.0.0.1:3333")
+    return iOSStreamReceiver(f"http://127.0.0.1:{IOS_STREAM_PORT}")
 
 
 def _save_frame(frame, device_type, prefix, manual=False):
@@ -68,7 +68,10 @@ def _capture_single_frame(device):
         res = subprocess.run(cmd, env=env, capture_output=True, timeout=15, creationflags=paths.CREATE_NO_WINDOW)
         frame = cv2.imread(tmp_path)
         if frame is None:
-            add_log(f"⚠️ iOS screenshot failed: exit code {res.returncode}")
+            # 仕様: docs/spec/bugs/LOCAL-017_ストリーム接続の一時的な切断で自動撮影全体が停止する.md
+            # 以前はgo-iosの出力を破棄しており、失敗原因が分からなかった
+            stderr = res.stderr.decode('utf-8', errors='replace').strip() if res.stderr else ""
+            add_log(f"⚠️ iOS screenshot failed: {stderr or f'exit code {res.returncode}'}")
         return frame
     except Exception as e:
         add_log(f"⚠️ iOS screenshot failed: {e}")
@@ -148,129 +151,162 @@ def process_frame_changed(frame, is_static_mode=False):
     return False
 
 
+# 仕様: docs/spec/screenshot-capture.md（接続の一時的な切断からの自動再接続）
+# ストリーム接続はiOS/Android共通で不安定になることがあるため、切断のたびに
+# 自動撮影全体を止めるのではなく、この回数までは黙って再接続を試みる。
+MAX_RECONNECT_ATTEMPTS = 2
+RECONNECT_DELAY = 1.5
+
+
 def auto_capture_loop():
     state.last_error = None
-
-    device, error_msg = dev_manager.start_stream(state.current_config["device"])
-    if not device:
-        state.last_error = error_msg
-        add_log(f"{error_msg}")
-        state.is_running = False
-        # 仕様: docs/spec/session-grouping.md（セッション終了の後始末）
-        state.current_session_id = None
-        return
-
-    add_log("▶️ 自動撮影を開始しました")
-    stable_count = 0
-    already_captured = False
-
-    device_type = device["os"]
-    receiver = _create_receiver(device)
-    # 仕様: docs/spec/manual-capture.md（撮影中の手動撮影が同じ受信中フレームを使えるようにする）
-    state.active_receiver = receiver
-    state.active_device = device
-    receiver.start()
-    time.sleep(0.5)
-    last_frame_seq = None
+    device_id = state.current_config["device"]
+    reconnect_attempts = 0
 
     while state.is_running:
-        if not receiver.is_healthy():
-            state.last_error = receiver.last_error or "ストリームが切断されました。"
-            add_log(f"{state.last_error}")
+        device, error_msg = dev_manager.start_stream(device_id)
+        if not device:
+            state.last_error = error_msg
+            add_log(f"{error_msg}")
             state.is_running = False
             break
-        start_time = time.time()
-        conf = state.current_config
 
-        # 【改善1】receiver から取得する時は、最短で最新のものだけを取る
-        frame = receiver.latest_frame
-        frame_seq = receiver.frame_seq
-        if frame is None:
-            time.sleep(0.05)
-            continue
-
-        # 仕様: docs/spec/bugs/LOCAL-004_動的モードのフレーム重複による誤検知.md
-        # まだ新しいフレームが届いていない場合、同じフレームを「変化なし」として
-        # 二重にカウントしてしまうと誤って静止判定・撮影されるため、判定自体をスキップする
-        if frame_seq == last_frame_seq:
-            time.sleep(0.01)
-            continue
-        last_frame_seq = frame_seq
-
-        # 【改善2】変化検知は 1 回のみ。sleep は外す
-        changed = process_frame_changed(frame)
-
-        frames_needed = max(1, int(conf["settling"] / conf["interval"]))
-
-        # ==========================================
-        # 🟢 静的モードの仕様
-        # 動いたら指定した秒数（settling）後に撮影
-        # ==========================================
-        if conf["mode"] == "static":
-            if changed:
-                add_log(f"🎬 変化検知... 待機中 ({conf['settling']}s)")
-                if conf["settling"] > 0:
-                    time.sleep(conf["settling"])
-
-                if state.is_running:
-                    # 待機が明けた「その瞬間」の最新フレームを再度取得して保存
-                    final_frame = receiver.latest_frame if receiver.latest_frame is not None else frame
-                    _save_frame(final_frame, device_type, conf['prefix'])
-
-                    # 撮影直後の状態を基準にする
-                    _set_baseline(final_frame)
-
-                    # 判定履歴をリセットして、連続撮影を防止する
-                    state.score_history.clear()
-
-                    # 撮影直後のフレームをスキップして、判定を安定させる
-                    _discard_frames(receiver, 10)
-
-        # ==========================================
-        # 🔵 動的モードの仕様
-        # 動いている時は撮影しない。
-        # 静止判定中に再び動き始めたら撮影しない、再び静止するまで動作中判定。
-        # 静止してから指定判定を満たしたら撮影。一度撮影したら動くまで撮影しない。
-        # ==========================================
+        if reconnect_attempts == 0:
+            add_log("▶️ 自動撮影を開始しました")
         else:
-            if changed:
-                # 💡 画面が動き続けている間、または静止判定中に再び動き始めた場合
-                already_captured = False # 撮影許可を戻す
-                stable_count = 0         # 静止カウントを容赦なくゼロにリセット
-                add_log("🎬 画面動作中...")
+            add_log(f"🔄 接続を再開しました（再接続 {reconnect_attempts}/{MAX_RECONNECT_ATTEMPTS}）")
+        stable_count = 0
+        already_captured = False
+        disconnected = False
+
+        device_type = device["os"]
+        receiver = _create_receiver(device)
+        # 仕様: docs/spec/manual-capture.md（撮影中の手動撮影が同じ受信中フレームを使えるようにする）
+        state.active_receiver = receiver
+        state.active_device = device
+        receiver.start()
+        time.sleep(0.5)
+        # 前の接続の判定状態を持ち越さない
+        state.last_frame_data = None
+        state.score_history.clear()
+        last_frame_seq = None
+
+        while state.is_running:
+            if not receiver.is_healthy():
+                # 仕様: docs/spec/bugs/LOCAL-017_ストリーム接続の一時的な切断で自動撮影全体が停止する.md
+                # HTTP接続が切れた際のメッセージ（例:「Remote end closed connection without
+                # response」）だけでは原因が分からないため、go-ios自身が報告した理由があれば使う
+                state.last_error = dev_manager.last_stream_error or receiver.last_error or "ストリームが切断されました。"
+                dev_manager.last_stream_error = None
+                add_log(f"{state.last_error}")
+                disconnected = True
+                break
+            start_time = time.time()
+            conf = state.current_config
+
+            # 【改善1】receiver から取得する時は、最短で最新のものだけを取る
+            frame = receiver.latest_frame
+            frame_seq = receiver.frame_seq
+            if frame is None:
+                time.sleep(0.05)
+                continue
+
+            # 仕様: docs/spec/bugs/LOCAL-004_動的モードのフレーム重複による誤検知.md
+            # まだ新しいフレームが届いていない場合、同じフレームを「変化なし」として
+            # 二重にカウントしてしまうと誤って静止判定・撮影されるため、判定自体をスキップする
+            if frame_seq == last_frame_seq:
+                time.sleep(0.01)
+                continue
+            last_frame_seq = frame_seq
+
+            # 【改善2】変化検知は 1 回のみ。sleep は外す
+            changed = process_frame_changed(frame)
+
+            frames_needed = max(1, int(conf["settling"] / conf["interval"]))
+
+            # ==========================================
+            # 🟢 静的モードの仕様
+            # 動いたら指定した秒数（settling）後に撮影
+            # ==========================================
+            if conf["mode"] == "static":
+                if changed:
+                    add_log(f"🎬 変化検知... 待機中 ({conf['settling']}s)")
+                    if conf["settling"] > 0:
+                        time.sleep(conf["settling"])
+
+                    if state.is_running:
+                        # 待機が明けた「その瞬間」の最新フレームを再度取得して保存
+                        final_frame = receiver.latest_frame if receiver.latest_frame is not None else frame
+                        _save_frame(final_frame, device_type, conf['prefix'])
+
+                        # 撮影直後の状態を基準にする
+                        _set_baseline(final_frame)
+
+                        # 判定履歴をリセットして、連続撮影を防止する
+                        state.score_history.clear()
+
+                        # 撮影直後のフレームをスキップして、判定を安定させる
+                        _discard_frames(receiver, 10)
+
+            # ==========================================
+            # 🔵 動的モードの仕様
+            # 動いている時は撮影しない。
+            # 静止判定中に再び動き始めたら撮影しない、再び静止するまで動作中判定。
+            # 静止してから指定判定を満たしたら撮影。一度撮影したら動くまで撮影しない。
+            # ==========================================
             else:
-                # 完全に動きが止まっている（静止中）場合
-                if already_captured:
-                    # 💡 一度撮影した後は、次に画面が動くまで完全に沈黙（ログも出さない）
-                    pass
+                if changed:
+                    # 💡 画面が動き続けている間、または静止判定中に再び動き始めた場合
+                    already_captured = False # 撮影許可を戻す
+                    stable_count = 0         # 静止カウントを容赦なくゼロにリセット
+                    add_log("🎬 画面動作中...")
                 else:
-                    stable_count += 1
-                    add_log(f"📊 静止確認: {stable_count}/{frames_needed}")
+                    # 完全に動きが止まっている（静止中）場合
+                    if already_captured:
+                        # 💡 一度撮影した後は、次に画面が動くまで完全に沈黙（ログも出さない）
+                        pass
+                    else:
+                        stable_count += 1
+                        add_log(f"📊 静止確認: {stable_count}/{frames_needed}")
 
-                    # 指定された秒数（回数）ずっと静止し続けた瞬間
-                    if stable_count >= frames_needed:
-                        if state.is_running:
-                            _save_frame(frame, device_type, conf['prefix'])
+                        # 指定された秒数（回数）ずっと静止し続けた瞬間
+                        if stable_count >= frames_needed:
+                            if state.is_running:
+                                _save_frame(frame, device_type, conf['prefix'])
 
-                            # 撮影後のクールダウン（判定ロジックを強制リセット）
-                            already_captured = True
-                            stable_count = 0
+                                # 撮影後のクールダウン（判定ロジックを強制リセット）
+                                already_captured = True
+                                stable_count = 0
 
-                            # ここで現在のフレームを基準に上書きし、変化検知を「なし」からスタートさせる
-                            _set_baseline(frame)
+                                # ここで現在のフレームを基準に上書きし、変化検知を「なし」からスタートさせる
+                                _set_baseline(frame)
 
-                            # 受信バッファを空にする（合計1秒分を「受信待ち」で潰す）
-                            _discard_frames(receiver, 20)
+                                # 受信バッファを空にする（合計1秒分を「受信待ち」で潰す）
+                                _discard_frames(receiver, 20)
 
-        elapsed = time.time() - start_time
-        sleep_time = max(0.01, conf["interval"] - elapsed)
-        time.sleep(sleep_time)
+            elapsed = time.time() - start_time
+            sleep_time = max(0.01, conf["interval"] - elapsed)
+            time.sleep(sleep_time)
 
-    receiver.stop()
-    dev_manager.stop_stream()
-    # 仕様: docs/spec/manual-capture.md（撮影中の手動撮影が同じ受信中フレームを使えるようにする）
-    state.active_receiver = None
-    state.active_device = None
+        receiver.stop()
+        dev_manager.stop_stream()
+        # 仕様: docs/spec/manual-capture.md（撮影中の手動撮影が同じ受信中フレームを使えるようにする）
+        state.active_receiver = None
+        state.active_device = None
+
+        if not state.is_running:
+            break  # ユーザーが停止した、または致命的なエラーで終了した
+
+        if not disconnected:
+            break  # while state.is_running のチェックのみで抜けた（通常は起こらないが念のため）
+
+        reconnect_attempts += 1
+        if reconnect_attempts > MAX_RECONNECT_ATTEMPTS:
+            add_log(f"⚠️ 再接続に{MAX_RECONNECT_ATTEMPTS}回失敗したため、自動撮影を停止します。")
+            state.is_running = False
+            break
+
+        time.sleep(RECONNECT_DELAY)
 
     # 仕様: docs/spec/session-grouping.md（セッション終了の後始末）
     state.current_session_id = None
