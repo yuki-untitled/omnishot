@@ -4,116 +4,27 @@ OmniShot は、iOS および Android 端末の画面変化を検知し、自動�
 
 ## ✨ 主な機能
 
-* **クロスプラットフォーム対応:** Mac OS（Apple Silicon/Intel）および Windows 環境に両対応。
+* **クロスプラットフォーム対応:** Mac（Apple Silicon）および Windows 環境に対応。配布版は [GitHub Releases](https://github.com/yuki-untitled/omnishot/releases) からダウンロードできます。
 * **マルチOSキャプチャ:** 1つのアプリで iPhone (iOS) と Android 両方の画面キャプチャが可能。
-* **2つの自動撮影モード:**
-  * **静的モード:** 画面の変化を検知した後、指定した静止時間を待ってから撮影。
-  * **動的モード:** 画面が動いている間は待機し、ピタッと止まった瞬間を狙って自動撮影。
-* **Web UI ギャラリー:** キャプチャした画像をブラウザ上でリアルタイムに確認・管理（全選択、一括ダウンロード、一括削除）。
-* **表示名の編集:** ギャラリー上でファイル名をクリックして任意の表示名に変更可能。サーバー側に永続化され、ZIPダウンロード時のファイル名にも反映される。
+* **2つの自動撮影モード:** 静的モード／動的モードで、画面の変化や静止を検知して自動撮影。
+* **手動撮影:** 自動検知に加えて、任意のタイミングでシャッターを切ることも可能。
+* **Web UI ギャラリー:** キャプチャした画像をブラウザ上でリアルタイムに確認・管理。
+* **撮影セッションのグルーピング:** 撮影の開始〜停止を1セッションとしてギャラリー上で区切り表示。
+* **表示名の編集:** ギャラリー上で任意の表示名に変更可能。サーバー側に永続化される。
 
-## 🗂️ プロジェクト構造
+詳細な機能仕様は以下を参照してください。
 
-```tree
-.
-├── run.py                # エントリーポイント（開発サーバー起動）
-├── requirements.txt      # 依存ライブラリ一覧
-├── omnishot/              # Flask バックエンド & 制御ロジック（パッケージ）
-├── myicon.icns           # Mac用アプリケーションアイコン
-├── README.md             # 本ドキュメント
-├── bin/                  # コア・バイナリ（Git管理対象）
-│   ├── mac/              # Mac用 (adb, go-ios)
-│   └── win/              # Windows用 (adb.exe, go-ios.exe, DLL類)
-├── static/               # フロントエンド静的アセット
-│   ├── css/style.css     # スタイルシート
-│   ├── js/main.js        # フロントエンド制御ロジック
-│   └── favicon.ico       # ブラウザタブ用アイコン
-└── templates/
-    └── index.html        # Web UI メイン画面
-```
+* [docs/spec/screenshot-capture.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/screenshot-capture.md) — 自動スクリーンショットキャプチャ
+* [docs/spec/device-selection.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/device-selection.md) — 撮影端末の選択
+* [docs/spec/manual-capture.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/manual-capture.md) — 手動撮影
+* [docs/spec/gallery.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/gallery.md) — Web UI ギャラリー・表示名編集
+* [docs/spec/session-grouping.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/session-grouping.md) — 撮影セッションのグルーピング
+* [docs/spec/native-window.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/native-window.md) — ネイティブウィンドウ化
 
-## 🚀 開発環境での実行方法
+## 📚 ドキュメント
 
-1. 依存ライブラリのインストール
-```bash
-pip install -r requirements.txt
-```
-
-2. アプリケーションの起動
-```bash
-python3 run.py
-```
-起動後、自動的にブラウザが立ち上がり、`http://127.0.0.1:5001` にアクセスします。
-
-## 🛠️ パッケージ化（ビルド）手順
-PyInstaller を使用して、配布用の単体アプリケーションを生成します。
-
-### 🍏 Mac OS (.app 形式のビルド)
-ターミナルでプロジェクトのルートディレクトリに移動し、以下のコマンドを実行します。
-```bash
-# 古いビルドキャッシュの削除
-rm -rf build dist OmniShot.spec selfIdentity.plist
-
-# ビルドの実行
-python3 -m PyInstaller --onedir --windowed \
-  --add-data "templates:templates" \
-  --add-data "static:static" \
-  --add-data "bin/mac:bin/mac" \
-  --name "OmniShot" \
-  --icon=myicon.icns \
-  --clean \
-  run.py
-```
-ビルド完了後、`dist/OmniShot.app` が生成されます。
-
-#### ⚠️ macOSで `.app` を実行する際の注意点
-
-初回起動時にセキュリティの関係でエラーが出る場合があります。その場合は以下の操作を行なってください。
-
-`設定 > プライパシーとセキュリティ > このまま開く`
-
-### 💻 Windows (.exe 形式のビルド)
-Windows環境のコマンドプロンプトまたは PowerShell で以下を実行します（※パスの区切り文字が `;` になります）。
-```bash
-:: 古いビルドキャッシュの削除
-rmdir /s /q build dist OmniShot.spec selfIdentity.plist
-
-:: ビルドの実行
-python -m PyInstaller --onefile --windowed `
-  --add-data "templates;templates" `
-  --add-data "static;static" `
-  --add-data "bin/win;bin/win" `
-  --name "OmniShot" `
-  --icon="static/favicon.ico" `
-  --clean `
-  run.py
-```
-ビルド完了後、`dist/OmniShot.exe` が生成されます。
-
-#### ⚠️ Windowsで `.exe` を実行する際の注意点
-
-- `OmniShot.exe` ファイルをダブルクリックすることで起動ができます。
-  - 初回のみ、「WindowsによってPCが保護されました」と表示されることがあります。その場合は以下の操作を行なってください。
-
-`詳細情報 > 実行`
-
-- Androidデバイスを接続した状態で「自動撮影開始」ボタンをクリックすると、Windowsセキュリティによる許可を求められます。
-- 同様に、iOSデバイスを接続した状態で「自動撮影開始」ボタンをクリックすると、Windowsセキュリティによる許可を求められます。
-  - 「パブリック ネットワークとプライベート ネットワークにこのアプリへのアクセスを許可しますか？」と表示されたら、以下の操作を行なってください。
-
-` 表示数を増やす > 「パブリック ネットワーク」と「プライベート ネットワーク」両方にチェックをつける > 許可`
-
-## 📝 推奨される .gitignore
-ビルド時に生成される一時フォルダや環境依存ファイルは Git に含めないよう、`.gitignore` ファイルを作成して以下を記述することを推奨します。
-```text
-build/
-dist/
-*.spec
-.DS_Store
-__pycache__/
-*.pyc
-captures/
-```
+* [docs/guides/development.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/guides/development.md) — プロジェクト構造・開発環境での実行方法
+* [docs/guides/build.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/guides/build.md) — Mac / Windows 向けパッケージ化（ビルド）・リリース手順
 
 ## ⚖️ 免責事項 / ライセンス
 本アプリケーションに含まれる `adb` および `go-ios` バイナリの著作権は、それぞれのオープンソースプロジェクトのライセンスに準拠します。
