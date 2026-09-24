@@ -50,9 +50,8 @@
 
     <div class="header">
         <div class="header-top">
-            <h1>📱 OmniShot</h1>
+            <h1><img src="{{ url_for('static', filename='app-icon.png') }}" alt="" class="app-icon"> OmniShot</h1>
             <div class="header-actions">
-                <span class="header-note">選択した画像をzipファイルでダウンロードできます。ファイル名をクリックして変更できます。</span>
                 <a href="{{ url_for('help_page') }}" class="btn header-btn header-help" onmouseover="this.style.background='#666'" onmouseout="this.style.background='#555'">ℹ️ 使い方</a>
                 <button id="openGuideBtn" class="btn header-btn header-guide" onmouseover="this.style.background='#555'" onmouseout="this.style.background='#444'">❓ 設定ガイド</button>
                 <button class="btn btn-danger header-btn header-exit" onclick="shutdownApp()">🛑 アプリ終了</button>
@@ -128,9 +127,9 @@
         </div>
 
         <div class="log-container">
-            <h3>Live Logs</h3>
             <div id="logConsole" class="log-console"></div>
         </div>
+        <span class="header-note">選択した画像をzipファイルでダウンロードできます。ファイル名をクリックして変更できます。</span>
     </div>
     
     <div id="gallery" class="gallery"></div>

@@ -47,6 +47,16 @@ body {
 .header-top h1 {
     margin: 0;
     font-size: 1.7rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.app-icon {
+    width: 1.3em;
+    height: 1.3em;
+    border-radius: 6px;
+    vertical-align: middle;
 }
 
 .header-actions {
@@ -58,9 +68,11 @@ body {
 }
 
 .header-note {
+    display: block;
+    margin-top: 8px;
     color: #bbb;
     font-size: 12px;
-    white-space: nowrap;
+    text-align: right;
 }
 
 .header-btn {
@@ -549,7 +561,7 @@ input[type="number"] {
     .header-top { flex-wrap: wrap; gap: 8px; }
     .header-top h1 { font-size: 1.25rem; }
     .header-actions { width: 100%; justify-content: center; gap: 5px; }
-    .header-note { font-size: 11px; white-space: normal; text-align: center; }
+    .header-note { font-size: 11px; }
     .controls { gap: 5px; margin: 6px 0; }
     .controls label { gap: 3px; font-size: 12px; }
     input, select { padding: 5px; font-size: 12px; }

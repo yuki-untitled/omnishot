@@ -197,8 +197,8 @@ def register(app):
 
     @app.route('/update_settings')
     def update_settings():
+        # 入力のたびに呼ばれるため、ログには出さない（設定変更自体はstate.current_configに反映される）
         _apply_config_from_args()
-        add_log(f"📋 設定更新: {state.current_config}")
         return "Updated"
 
     @app.route('/logs/stream')
