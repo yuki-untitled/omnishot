@@ -4,7 +4,7 @@ OmniShot は、iOS および Android 端末の画面変化を検知し、自動�
 
 ## ✨ 主な機能
 
-* **クロスプラットフォーム対応:** Mac OS（Apple Silicon/Intel）および Windows 環境に両対応。
+* **クロスプラットフォーム対応:** Mac（Apple Silicon）および Windows 環境に対応。配布版は [GitHub Releases](https://github.com/yuki-untitled/omnishot/releases) からダウンロードできます。
 * **マルチOSキャプチャ:** 1つのアプリで iPhone (iOS) と Android 両方の画面キャプチャが可能。
 * **2つの自動撮影モード:** 静的モード／動的モードで、画面の変化や静止を検知して自動撮影。
 * **手動撮影:** 自動検知に加えて、任意のタイミングでシャッターを切ることも可能。
@@ -24,7 +24,7 @@ OmniShot は、iOS および Android 端末の画面変化を検知し、自動�
 ## 📚 ドキュメント
 
 * [docs/guides/development.md](docs/guides/development.md) — プロジェクト構造・開発環境での実行方法
-* [docs/guides/build.md](docs/guides/build.md) — Mac / Windows 向けパッケージ化（ビルド）手順
+* [docs/guides/build.md](docs/guides/build.md) — Mac / Windows 向けパッケージ化（ビルド）・リリース手順
 
 ## ⚖️ 免責事項 / ライセンス
 本アプリケーションに含まれる `adb` および `go-ios` バイナリの著作権は、それぞれのオープンソースプロジェクトのライセンスに準拠します。

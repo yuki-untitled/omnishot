@@ -7,6 +7,8 @@
 ├── run.py                # エントリーポイント（開発サーバー起動）
 ├── requirements.txt      # 依存ライブラリ一覧
 ├── requirements-dev.txt  # 開発用の依存ライブラリ（テスト）
+├── constraints.txt       # リリース用ビルドで使うライブラリの版
+├── .github/workflows/    # リリース用ビルド（GitHub Actions）
 ├── omnishot/             # Flask バックエンド & 制御ロジック（パッケージ）
 │   ├── routes.py         # 画面からの要求の受け付け（処理の本体は各モジュール）
 │   ├── capture.py        # 変化の判定・自動撮影のループ・手動撮影・画像の保存
@@ -19,7 +21,7 @@
 ├── tests/                # pytest のテスト
 ├── myicon.icns           # Mac用アプリケーションアイコン
 ├── README.md             # プロジェクト概要
-├── docs/                 # 仕様・ガイド
+├── docs/                 # 仕様・ガイド・リリースノート（docs/releases）
 ├── bin/                  # コア・バイナリ（Git管理対象）
 │   ├── mac/              # Mac用 (adb, go-ios)
 │   └── win/              # Windows用 (adb.exe, go-ios.exe, DLL類)

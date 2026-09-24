@@ -66,5 +66,22 @@ python -m PyInstaller --onefile --windowed `
 
 ` 表示数を増やす > 「パブリック ネットワーク」と「プライベート ネットワーク」両方にチェックをつける > 許可`
 
+## リリース手順
+
+GitHub Actions（[.github/workflows/release.yml](../../.github/workflows/release.yml)）で Mac 版・Windows 版をビルドし、GitHub Releases の下書きに添付します。
+
+1. リリースノートを `docs/releases/<バージョン>.md`（例: `docs/releases/v1.0.0.md`）に書き、develop にコミットして push する
+2. タグを付けて push する
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+3. GitHub の Actions タブで、ワークフロー「Release」が成功したことを確認する
+4. GitHub の Releases に下書きができているので、添付されたファイルをダウンロードして動作を確かめてから「Publish release」を押す
+
+- ライブラリの版は [constraints.txt](../../constraints.txt) で固定しています。ライブラリを更新したら、手元で動作を確かめてから constraints.txt も更新してください。
+- Mac 版は Apple Silicon のランナーでビルドするため、Apple Silicon の Mac でのみ動作します。Apple の署名・公証は受けていません。
+- ビルドに失敗した場合は、タグを消して（`git push origin :refs/tags/v1.0.0` と `git tag -d v1.0.0`）修正後に付け直します。下書きが作られていれば、Releases の画面から削除します。
+
 ## 関連ガイド
 - 開発環境での実行方法: [development.md](development.md)

@@ -1,0 +1,87 @@
+# 手順: docs/guides/build.md#リリース手順
+# v から始まるタグを push すると、Mac 版・Windows 版をビルドし、GitHub Releases の下書きに添付する。
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    # Apple Silicon（arm64）のランナー。できる .app は Apple Silicon の Mac でだけ動く。
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt -c constraints.txt
+      - name: Test
+        run: python -m pytest -q
+      - name: Build
+        run: |
+          python -m PyInstaller --onedir --windowed \
+            --add-data "templates:templates" \
+            --add-data "static:static" \
+            --add-data "bin/mac:bin/mac" \
+            --name "OmniShot" \
+            --icon=myicon.icns \
+            --clean \
+            run.py
+      - name: Package
+        # ditto で固めて、.app の中の実行権限・シンボリックリンクを保つ
+        run: ditto -c -k --keepParent dist/OmniShot.app "OmniShot-${GITHUB_REF_NAME}-mac-arm64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: OmniShot-*-mac-arm64.zip
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          # pywebview が Windows で使う pythonnet の対応を待たずに済むよう、1つ前の版にする
+          python-version: "3.13"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -c constraints.txt
+      - name: Build
+        run: >-
+          python -m PyInstaller --onefile --windowed
+          --add-data "templates;templates"
+          --add-data "static;static"
+          --add-data "bin/win;bin/win"
+          --name "OmniShot"
+          --icon="static/favicon.ico"
+          --clean
+          run.py
+      - name: Package
+        shell: pwsh
+        run: Move-Item dist/OmniShot.exe "OmniShot-$env:GITHUB_REF_NAME-windows-x64.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: OmniShot-*-windows-x64.exe
+
+  release:
+    needs: [build-mac, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          # 公開する前に、ダウンロードして動作を確かめるため下書きにする
+          draft: true
+          name: OmniShot ${{ github.ref_name }}
+          body_path: docs/releases/${{ github.ref_name }}.md
+          files: artifacts/*
