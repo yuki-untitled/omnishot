@@ -107,9 +107,22 @@ def manual_capture(device_id):
         state.manual_capture_lock.release()
 
 
+def _to_compare_image(frame):
+    """変化検知の比較用に、グレースケール化・縮小・ノイズ除去した画像を返す。"""
+    h, w = frame.shape[:2]
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    gray = cv2.resize(gray, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
+    return cv2.medianBlur(gray, 3)
+
+
 def _set_baseline(frame):
-    """撮影直後のフレームを変化検知の基準にする。"""
-    state.last_frame_data = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    """撮影直後のフレームを変化検知の基準にする。
+
+    仕様: docs/spec/bugs/LOCAL-019_動的モードで操作を止めてから撮影までが遅く連続した操作で撮り漏れる.md
+    判定時と同じ比較用の画像にしておく（以前はサイズが異なり、撮影後の最初のコマが
+    変化の有無に関わらず基準に置き換わるだけになっていた）。
+    """
+    state.last_frame_data = _to_compare_image(frame)
 
 
 def _discard_frames(receiver, count):
@@ -120,14 +133,10 @@ def _discard_frames(receiver, count):
         time.sleep(0.05)
 
 
-def process_frame_changed(frame, is_static_mode=False):
+def process_frame_changed(frame, is_static_mode=False, use_moving_average=True):
     if frame is None: return False
 
-    h, w = frame.shape[:2]
-    target_w, target_h = w // 2, h // 2
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    gray = cv2.resize(gray, (target_w, target_h), interpolation=cv2.INTER_AREA)
-    gray = cv2.medianBlur(gray, 3)
+    gray = _to_compare_image(frame)
 
     # 基準データチェック
     if state.last_frame_data is None or state.last_frame_data.shape != gray.shape:
@@ -139,8 +148,11 @@ def process_frame_changed(frame, is_static_mode=False):
     score = np.mean(diff)
 
     # 4. 3フレームの移動平均を取る
-    state.score_history.append(score)
-    score = sum(state.score_history) / len(state.score_history)
+    # 仕様: docs/spec/bugs/LOCAL-019_動的モードで操作を止めてから撮影までが遅く連続した操作で撮り漏れる.md
+    # 動的モードでは、止まった後も過去の大きな変化量が平均に残って静止判定が遅れるため、使わない
+    if use_moving_average:
+        state.score_history.append(score)
+        score = sum(state.score_history) / len(state.score_history)
 
     # 4. 閾値判定
     threshold = 0.5 if is_static_mode else 0.25
@@ -220,7 +232,7 @@ def auto_capture_loop():
             last_frame_seq = frame_seq
 
             # 【改善2】変化検知は 1 回のみ。sleep は外す
-            changed = process_frame_changed(frame)
+            changed = process_frame_changed(frame, use_moving_average=(conf["mode"] == "static"))
 
             frames_needed = max(1, int(conf["settling"] / conf["interval"]))
 
@@ -279,10 +291,9 @@ def auto_capture_loop():
                                 stable_count = 0
 
                                 # ここで現在のフレームを基準に上書きし、変化検知を「なし」からスタートさせる
+                                # 仕様: docs/spec/bugs/LOCAL-019_動的モードで操作を止めてから撮影までが遅く連続した操作で撮り漏れる.md
+                                # 撮影直後に受信を捨てて待つと、その間の画面遷移を見逃すため、次のコマから判定を再開する
                                 _set_baseline(frame)
-
-                                # 受信バッファを空にする（合計1秒分を「受信待ち」で潰す）
-                                _discard_frames(receiver, 20)
 
             elapsed = time.time() - start_time
             sleep_time = max(0.01, conf["interval"] - elapsed)
