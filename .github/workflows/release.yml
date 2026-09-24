@@ -15,8 +15,8 @@ jobs:
     # Apple Silicon（arm64）のランナー。できる .app は Apple Silicon の Mac でだけ動く。
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
       - name: Install dependencies
@@ -36,7 +36,7 @@ jobs:
       - name: Package
         # ditto で固めて、.app の中の実行権限・シンボリックリンクを保つ
         run: ditto -c -k --keepParent dist/OmniShot.app "OmniShot-${GITHUB_REF_NAME}-mac-arm64.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mac
           path: OmniShot-*-mac-arm64.zip
@@ -44,8 +44,8 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           # pywebview が Windows で使う pythonnet の対応を待たずに済むよう、1つ前の版にする
           python-version: "3.13"
@@ -64,7 +64,7 @@ jobs:
       - name: Package
         shell: pwsh
         run: Move-Item dist/OmniShot.exe "OmniShot-$env:GITHUB_REF_NAME-windows-x64.exe"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: OmniShot-*-windows-x64.exe
@@ -73,12 +73,12 @@ jobs:
     needs: [build-mac, build-windows]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           # 公開する前に、ダウンロードして動作を確かめるため下書きにする
           draft: true
