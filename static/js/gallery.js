@@ -66,6 +66,11 @@ function deviceTypeOf(img) {
     return img.toLowerCase().replace(/^manual_/, '');
 }
 
+function matchesDeviceFilter(img) {
+    const filterValue = elDeviceFilter.value;
+    return filterValue === 'all' || deviceTypeOf(img).startsWith(filterValue);
+}
+
 function defaultDisplayName(img) {
     return img.replace(/\.png$/i, '');
 }
@@ -81,16 +86,20 @@ function sessionGroupKey(img) {
 function sessionHeadingHtml(img) {
     const { allImages, imageSessions, sessions } = gallery;
     const sessionId = imageSessions[img];
-    const downloadButton = (key) =>
-        `<button type="button" class="session-download" data-session="${key}" title="このセッションの画像をZIPでダウンロード">ダウンロード</button>`;
+    // 仕様: docs/spec/session-grouping.md（セッション単位の全選択・削除・ダウンロード）
+    const actions = (key) => `<span class="session-actions">`
+        + `<button type="button" class="session-action session-select" data-session="${key}">全選択</button>`
+        + `<button type="button" class="session-action session-delete" data-session="${key}" title="このセッションの画像をすべて削除">削除</button>`
+        + `<button type="button" class="session-action session-download" data-session="${key}" title="このセッションの画像をZIPでダウンロード">ダウンロード</button>`
+        + `</span>`;
     if (sessionId === undefined) {
         const count = allImages.filter(name => imageSessions[name] === undefined).length;
-        return `<div class="session-heading"><span class="session-title">未分類</span><span class="session-meta">（${count}枚）</span>${downloadButton('unclassified')}</div>`;
+        return `<div class="session-heading"><span class="session-title">未分類</span><span class="session-meta">（${count}枚）</span>${actions('unclassified')}</div>`;
     }
     const info = sessions[sessionId] || {};
     const count = allImages.filter(name => imageSessions[name] === sessionId).length;
     const title = info.name ? escapeHtml(info.name) : `セッション${sessionId}`;
-    return `<div class="session-heading"><span class="session-title editable" data-session="${sessionId}" title="クリックして名前を変更">${title}</span><span class="session-meta">（${escapeHtml(info.startedAt || '')} - ${count}枚）</span>${downloadButton(sessionId)}</div>`;
+    return `<div class="session-heading"><span class="session-title editable" data-session="${sessionId}" title="クリックして名前を変更">${title}</span><span class="session-meta">（${escapeHtml(info.startedAt || '')} - ${count}枚）</span>${actions(sessionId)}</div>`;
 }
 
 // 仕様: docs/spec/session-grouping.md（セッション内の並べ替え）
@@ -134,11 +143,10 @@ export function refreshGalleryUI() {
     if (!elGallery) return;
 
     const sortOrder = elSortSelect.value;
-    const filterValue = elDeviceFilter.value;
 
     // 1. まずフィルタリングしてからソートする（"ios_..." や "android_..." で判定）
     const filteredImages = gallery.allImages
-        .filter(img => filterValue === 'all' || deviceTypeOf(img).startsWith(filterValue))
+        .filter(matchesDeviceFilter)
         .sort((a, b) => sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b));
 
     // 2. 「未分類」は撮影時刻に関わらず常に末尾へまとめる（セッションの一覧を確認しやすくするため）
@@ -168,6 +176,7 @@ export function refreshGalleryUI() {
         shown.forEach(img => html.push(cardHtml(img, timestamp)));
     });
     elGallery.innerHTML = html.join('');
+    updateSessionSelectButtons();
 }
 
 // ==========================================================================
@@ -192,6 +201,45 @@ function updateSelectionUI() {
     if (elDeselectAllBtn) elDeselectAllBtn.style.display = displayStyle;
     if (elDeleteSelectedBtn) elDeleteSelectedBtn.style.display = displayStyle;
     if (elDownloadBtn) elDownloadBtn.style.display = displayStyle;
+    updateSessionSelectButtons();
+}
+
+// 仕様: docs/spec/session-grouping.md（セッション単位の全選択・削除）
+// 対象は、ギャラリーに表示されている（端末フィルタで隠れていない）そのセッションの画像
+function visibleImagesOfSession(sessionKey) {
+    const groupKey = sessionKey === 'unclassified' ? 'unclassified' : `session:${sessionKey}`;
+    return gallery.allImages.filter(img => sessionGroupKey(img) === groupKey && matchesDeviceFilter(img));
+}
+
+// 見出しの「全選択」ボタンは、そのセッションの画像がすべて選択済みなら「選択解除」にする
+function updateSessionSelectButtons() {
+    elGallery.querySelectorAll('.session-select').forEach(button => {
+        const images = visibleImagesOfSession(button.dataset.session);
+        const allSelected = images.length > 0 && images.every(img => selectedFiles.has(img));
+        button.textContent = allSelected ? '選択解除' : '全選択';
+    });
+}
+
+function toggleSessionSelection(sessionKey) {
+    const images = visibleImagesOfSession(sessionKey);
+    const allSelected = images.length > 0 && images.every(img => selectedFiles.has(img));
+    images.forEach(img => allSelected ? selectedFiles.delete(img) : selectedFiles.add(img));
+    updateSelectionUI();
+    refreshGalleryUI();
+}
+
+function deleteSession(sessionKey) {
+    const images = visibleImagesOfSession(sessionKey);
+    if (images.length === 0) return;
+    const title = sessionKey === 'unclassified'
+        ? '未分類'
+        : ((gallery.sessions[sessionKey] || {}).name || `セッション${sessionKey}`);
+    if (!confirm(`「${title}」の${images.length}枚の画像を削除しますか？`)) return;
+
+    postJson('/delete_selected', { filenames: images }).then(() => {
+        images.forEach(img => selectedFiles.delete(img));
+        updateSelectionUI();
+    });
 }
 
 function deleteSelected() {
@@ -457,9 +505,12 @@ export function initGallery({ onOpenPreview }) {
     elGallery.addEventListener('click', (e) => {
         const target = e.target;
         // セッションの見出し（名前の変更・セッション単位のダウンロード）
-        const downloadButton = target.closest('.session-download');
-        if (downloadButton) {
-            downloadSession(downloadButton.dataset.session);
+        const sessionButton = target.closest('.session-action');
+        if (sessionButton) {
+            const sessionKey = sessionButton.dataset.session;
+            if (sessionButton.classList.contains('session-select')) toggleSessionSelection(sessionKey);
+            else if (sessionButton.classList.contains('session-delete')) deleteSession(sessionKey);
+            else downloadSession(sessionKey);
             return;
         }
         if (target.classList.contains('session-title') && target.dataset.session) {

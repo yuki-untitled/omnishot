@@ -457,8 +457,13 @@ input[type="number"] {
     max-width: 60%;
 }
 
-.session-download {
+.session-actions {
     margin-left: auto;
+    display: flex;
+    gap: 6px;
+}
+
+.session-action {
     padding: 2px 10px;
     border: 1px solid #444;
     border-radius: 4px;
@@ -468,9 +473,14 @@ input[type="number"] {
     cursor: pointer;
 }
 
-.session-download:hover {
+.session-action:hover {
     background: #333;
     color: #fff;
+}
+
+.session-delete:hover {
+    background: #c0392b;
+    border-color: #c0392b;
 }
 
 /* 仕様: docs/spec/session-grouping.md（並べ替え中の表示。青い線が入れる位置） */
