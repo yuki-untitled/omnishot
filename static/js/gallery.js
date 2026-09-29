@@ -183,7 +183,8 @@ function downloadSelected() {
         .then(blob => {
             const url = window.URL.createObjectURL(blob);
             downloadFrom(url, zipFilename);
-            window.URL.revokeObjectURL(url);
+            // アプリのウィンドウは保存先の選択後にURLを読むため、すぐには解放しない
+            setTimeout(() => window.URL.revokeObjectURL(url), 60000);
         })
         .catch(err => console.error("Download error:", err));
 }

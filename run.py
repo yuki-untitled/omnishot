@@ -83,6 +83,8 @@ if __name__ == '__main__':
     _wait_for_server()
 
     _accept_first_mouse_on_macos()
+    # 仕様: docs/spec/bugs/LOCAL-033_アプリ化するとスクリーンショットをダウンロードできない.md
+    webview.settings['ALLOW_DOWNLOADS'] = True
     window = webview.create_window("OmniShot", BASE_URL, width=1280, height=860)
     window.events.closing += _shutdown_via_http
     webview.start()
