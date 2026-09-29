@@ -102,20 +102,28 @@ function sessionHeadingHtml(img) {
     return `<div class="session-heading"><span class="session-title editable" data-session="${sessionId}" title="クリックして名前を変更">${title}</span><span class="session-meta">（${escapeHtml(info.startedAt || '')} - ${count}枚）</span>${actions(sessionId)}</div>`;
 }
 
+// 仕様: docs/spec/bugs/LOCAL-037_新しい順でも新しいセッションが上に表示されない.md
+// 画像の並びは、ファイル名ではなく撮影した時刻の順で決める。/images の画像は撮影が新しい順に届くので、その位置を使う。
+// 並び順設定に従う比較関数（新しい順は撮影が新しい画像が先）を返す。
+function chronologicalComparator() {
+    const rank = new Map(gallery.allImages.map((img, index) => [img, index]));
+    return elSortSelect.value === 'desc'
+        ? (a, b) => rank.get(a) - rank.get(b)
+        : (a, b) => rank.get(b) - rank.get(a);
+}
+
 // 仕様: docs/spec/session-grouping.md（セッション内の並べ替え）
 // セッションの画像を、画面に表示する順に返す。並べ替えたセッションは手動の順序、そうでなければ並び順設定に従う。
 // 並べ替えた後に増えた画像は、末尾に古い順で加える。
 function sessionImagesInDisplayOrder(sessionId) {
     const members = gallery.allImages.filter(img => gallery.imageSessions[img] === sessionId);
     const manual = manualOrder.get(sessionId);
-    if (!manual) {
-        const sign = elSortSelect.value === 'desc' ? -1 : 1;
-        return members.sort((a, b) => sign * a.localeCompare(b));
-    }
+    if (!manual) return members.sort(chronologicalComparator());
     const memberSet = new Set(members);
     const known = manual.filter(img => memberSet.has(img));
     const knownSet = new Set(known);
-    const added = members.filter(img => !knownSet.has(img)).sort((a, b) => a.localeCompare(b));
+    const oldestFirst = (a, b) => members.indexOf(b) - members.indexOf(a);
+    const added = members.filter(img => !knownSet.has(img)).sort(oldestFirst);
     return known.concat(added);
 }
 
@@ -142,31 +150,33 @@ function cardHtml(img, timestamp) {
 export function refreshGalleryUI() {
     if (!elGallery) return;
 
-    const sortOrder = elSortSelect.value;
-
     // 1. まずフィルタリングしてからソートする（"ios_..." や "android_..." で判定）
     const filteredImages = gallery.allImages
         .filter(matchesDeviceFilter)
-        .sort((a, b) => sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b));
+        .sort(chronologicalComparator());
 
-    // 2. 「未分類」は撮影時刻に関わらず常に末尾へまとめる（セッションの一覧を確認しやすくするため）
-    // 仕様: docs/spec/session-grouping.md
-    const isUnclassified = img => gallery.imageSessions[img] === undefined;
-    const orderedImages = filteredImages.filter(img => !isUnclassified(img))
-        .concat(filteredImages.filter(isUnclassified));
-
-    // 3. セッションごとにまとめ、見出しを挿入しながら描画する。
+    // 2. セッションごとにまとめる。見出しはセッション番号の順（新しい順は番号の大きい順）に並べ、
+    //    「未分類」は撮影時刻に関わらず常に末尾へまとめる（セッションの一覧を確認しやすくするため）。
     //    並べ替えたセッションは、手動の順序で表示する（それ以外の並び順は変えない）。
+    // 仕様: docs/spec/session-grouping.md
     const groups = new Map();
-    orderedImages.forEach(img => {
+    filteredImages.forEach(img => {
         const groupKey = sessionGroupKey(img);
         if (!groups.has(groupKey)) groups.set(groupKey, []);
         groups.get(groupKey).push(img);
     });
+    const sessionIdOf = images => gallery.imageSessions[images[0]];
+    const sign = elSortSelect.value === 'desc' ? -1 : 1;
+    const orderedGroups = Array.from(groups.values()).sort((a, b) => {
+        const idA = sessionIdOf(a);
+        const idB = sessionIdOf(b);
+        if (idA === undefined || idB === undefined) return (idA === undefined) - (idB === undefined);
+        return sign * (idA - idB);
+    });
     const timestamp = Date.now();
     const html = [];
-    groups.forEach(images => {
-        const sessionId = gallery.imageSessions[images[0]];
+    orderedGroups.forEach(images => {
+        const sessionId = sessionIdOf(images);
         let shown = images;
         if (sessionId !== undefined && manualOrder.has(sessionId)) {
             const inGroup = new Set(images);

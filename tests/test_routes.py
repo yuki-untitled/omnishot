@@ -233,3 +233,18 @@ def test_download_selected_is_not_numbered(client, save_dir):
     res = client.post("/download_selected", json={"filenames": ["a.png"]})
     with zipfile.ZipFile(io.BytesIO(res.data)) as zf:
         assert zf.namelist() == ["a.png"]
+
+
+# 仕様: docs/spec/bugs/LOCAL-037_新しい順でも新しいセッションが上に表示されない.md
+def test_images_are_newest_first_by_time_not_by_name(client, save_dir):
+    _touch(save_dir, "login_iOS_20260929_100000.png", 100)  # 名前は大きいが、撮影は古い
+    _touch(save_dir, "Android_20260929_100500.png", 200)
+    _touch(save_dir, "Manual_iOS_20260929_101000.png", 300)
+    assert client.get("/images").get_json()["images"] == [
+        "Manual_iOS_20260929_101000.png", "Android_20260929_100500.png", "login_iOS_20260929_100000.png"]
+
+
+def test_images_with_same_time_are_ordered_by_name(client, save_dir):
+    _touch(save_dir, "a.png", 100)
+    _touch(save_dir, "b.png", 100)
+    assert client.get("/images").get_json()["images"] == ["b.png", "a.png"]

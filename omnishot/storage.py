@@ -36,7 +36,8 @@ def exists(filename):
 def list_images():
     """保存した画像のファイル名を、新しい順に返す。"""
     images = [f for f in os.listdir(SAVE_DIR) if f.endswith('.png')]
-    images.sort(key=_mtime, reverse=True)
+    # 撮影した時刻が同じ画像は、ファイル名の順に並べる（並びが更新のたびに入れ替わらないようにする）
+    images.sort(key=lambda name: (_mtime(name), name), reverse=True)
     return images
 
 
