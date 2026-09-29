@@ -1,4 +1,31 @@
 /* ==========================================================================
+   0. 色の定義（深海のテーマ）
+   仕様: docs/spec/ui-theme.md
+   画面の色は、すべてここから参照する。ここの値を変えると、全画面の配色が変わる。
+   ========================================================================== */
+:root {
+    --bg: #050d16;              /* ページの背景（最深部）。単色にする（固定枠の覆いの色と同じ） */
+    --surface: #0a1b2b;         /* 枠・パネル・モーダルの面 */
+    --surface-top: #0d2438;     /* 上部の固定枠の、グラデーションの上端 */
+    --field: #0f2638;           /* 入力欄・カードの面 */
+    --line: #17384f;            /* 境界線（通常） */
+    --line-strong: #24506c;     /* 境界線（強調） */
+    --text: #d6e9f2;            /* 文字 */
+    --text-muted: #7f9fb3;      /* 補助の文字（項目名・説明） */
+    --accent: #22d3ee;          /* アクセント（シアン）。主要な操作・選択・撮影中 */
+    --accent-2: #2dd4bf;        /* アクセント2（ティール） */
+    --accent-glow: rgba(34, 211, 238, 0.35);  /* アクセントの淡い光 */
+    --accent-soft: rgba(34, 211, 238, 0.08);  /* アクセントの淡い面 */
+    --info: #38bdf8;            /* 情報（スカイブルー）。手動撮影・ダウンロード・並べ替えの目印 */
+    --danger: #d93a4c;          /* 危険（コーラル）。削除・停止・終了 */
+    --danger-hover: #c22f41;    /* 危険のホバー */
+    --on-accent: #03202b;       /* アクセント・情報の色のボタン上の文字 */
+    --on-danger: #ffffff;       /* 危険の色のボタン上の文字 */
+    --log-bg: #020a10;          /* ログ欄の背景 */
+}
+
+
+/* ==========================================================================
    1. ベーススタイル（全体設定）
    ========================================================================== */
 html {
@@ -9,8 +36,8 @@ html {
 
 body {
     font-family: sans-serif;
-    background: #121212;
-    color: #e0e0e0;
+    background: var(--bg);
+    color: var(--text);
     margin: 0;
     padding: 20px;
     box-sizing: border-box;
@@ -33,12 +60,13 @@ body {
     /* ページの余白（body の padding）と同じ位置に貼り付け、スクロールを始めても枠が動かないようにする */
     top: 20px;
     z-index: 100;
-    background: #1a1a1a;
+    background: linear-gradient(180deg, var(--surface-top), var(--surface));
     padding: 12px;
+    border: 1px solid var(--line);
     border-radius: 8px;
     /* 1つ目: 枠の上（画面の上端まで）と左右の余白（20px）、角の丸みの隙間を、ページの背景色で塞ぎ、裏を通る画像を見せない。
        下には広げない（ギャラリーの先頭を隠さないため）。2つ目: 従来の影 */
-    box-shadow: 0 -20px 0 20px #121212, 0 4px 15px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 -20px 0 20px var(--bg), 0 4px 15px rgba(0, 0, 0, 0.5);
 }
 
 .header-top {
@@ -76,7 +104,7 @@ body {
 .header-note {
     display: block;
     margin-top: 8px;
-    color: #bbb;
+    color: var(--text-muted);
     font-size: 12px;
     text-align: right;
 }
@@ -87,28 +115,38 @@ body {
     text-decoration: none;
 }
 
-.header-help {
-    background: #555;
-    color: #fff;
+.btn.header-help {
+    background: var(--field);
+    border-color: var(--line-strong);
+    color: var(--text);
 }
 
-.header-help:hover {
-    background: #666;
+.btn.header-help:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow);
 }
 
-/* 使い方ページのタブ。選んでいるタブを緑にする */
+/* 使い方ページのタブ。選んでいるタブをアクセントの色にする */
 .btn.guide-tab {
     flex: 1;
-    background: #555;
+    background: var(--field);
+    border-color: var(--line-strong);
+    color: var(--text);
+}
+
+.btn.guide-tab:hover {
+    border-color: var(--accent);
 }
 
 .btn.guide-tab.active {
-    background: #2ecc71;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
 }
 
 .header-exit {
-    background-color: #dc3545;
-    color: white;
+    background-color: var(--danger);
+    color: var(--on-danger);
 }
 
 
@@ -140,12 +178,19 @@ body {
 
 input, select {
     padding: 8px;
-    border: 1px solid #333;
+    border: 1px solid var(--line);
     border-radius: 4px;
-    background: #252525;
-    color: white;
+    background: var(--field);
+    color: var(--text);
     font-size: 14px;
     min-width: 0;
+}
+
+/* 仕様: docs/spec/ui-theme.md（フォーカスすると縁がアクセントの色になり、淡く光る） */
+input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-glow);
 }
 
 input[type="text"] {
@@ -158,20 +203,25 @@ input[type="number"] {
 }
 
 #status {
+    color: var(--text-muted);
     display: inline-flex;
     align-items: center;
     gap: 8px;
     height: 36px;
     padding: 0 14px;
-    border: 1px solid #333;
+    border: 1px solid var(--line);
     border-radius: 18px;
-    background: #1a1a1a;
+    background: var(--surface);
     font-weight: bold;
     font-size: 13px;
     white-space: nowrap;
 }
 
-/* 状態の丸印。色は文字色（JSが撮影中は緑、停止中は灰色に切り替える）に合わせる */
+/* 状態の丸印。色は文字色（撮影中はアクセントの色、停止中は補助の文字の色）に合わせる */
+#status.is-capturing {
+    color: var(--accent);
+}
+
 #status::before {
     content: "";
     width: 8px;
@@ -190,9 +240,9 @@ input[type="number"] {
     gap: 12px;
     margin: 0 0 12px;
     padding: 12px 14px;
-    border: 1px solid #2c2c2c;
+    border: 1px solid var(--line);
     border-radius: 8px;
-    background: #202020;
+    background: var(--surface);
 }
 
 /* 1行目: 撮影の条件。3項目を同じ幅で並べる */
@@ -232,7 +282,7 @@ input[type="number"] {
 .field-caption {
     display: block;
     margin-bottom: 4px;
-    color: #9a9a9a;
+    color: var(--text-muted);
     font-size: 12px;
 }
 
@@ -243,13 +293,14 @@ input[type="number"] {
     gap: 8px;
     height: 36px;
     padding: 0 10px;
-    border: 1px solid #333;
+    border: 1px solid var(--line);
     border-radius: 4px;
-    background: #252525;
+    background: var(--field);
 }
 
 .input-unit:focus-within {
-    border-color: #2ecc71;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-glow);
 }
 
 .control-panel select {
@@ -272,7 +323,7 @@ input[type="number"] {
 
 .control-panel .unit {
     flex: 0 0 auto;
-    color: #9a9a9a;
+    color: var(--text-muted);
     font-size: 13px;
 }
 
@@ -281,11 +332,17 @@ input[type="number"] {
     padding: 0 16px;
 }
 
-.btn-refresh {
+.btn.btn-refresh {
     /* 「端末の選択」と「撮影の操作」を区切るため、次のボタンとの間隔を広げる */
     margin-right: 30px;
-    background: #555;
-    color: #fff;
+    background: var(--field);
+    border-color: var(--line-strong);
+    color: var(--text);
+}
+
+.btn.btn-refresh:hover:not(:disabled) {
+    border-color: var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow);
 }
 
 .control-panel input:disabled,
@@ -301,12 +358,12 @@ input[type="number"] {
    ========================================================================== */
 .btn {
     padding: 10px 14px;
-    border: none;
+    border: 1px solid transparent;
     border-radius: 4px;
     font-weight: bold;
     font-size: 13px;
     cursor: pointer;
-    transition: 0.3s;
+    transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, filter 0.2s;
     white-space: nowrap;
     flex-shrink: 0;
 }
@@ -317,24 +374,55 @@ input[type="number"] {
 }
 
 .start {
-    background: #2ecc71;
-    color: white;
+    background: var(--accent);
+    color: var(--on-accent);
 }
 
 .stop {
-    background: #e74c3c;
-    color: white;
+    background: var(--danger);
+    color: var(--on-danger);
+}
+
+/* 仕様: docs/spec/ui-theme.md（ホバーで、主要・情報のボタンは少し明るく、危険のボタンは少し暗くなる） */
+.start:hover:not(:disabled),
+.manual-capture:hover:not(:disabled),
+.btn-info:hover:not(:disabled) {
+    filter: brightness(1.12);
+}
+
+.stop:hover:not(:disabled),
+.btn-danger:hover:not(:disabled),
+.header-exit:hover:not(:disabled) {
+    background: var(--danger-hover);
+}
+
+/* 補助のボタン。面の色に境界線 */
+.btn-secondary {
+    background: var(--field);
+    border-color: var(--line-strong);
+    color: var(--text);
+}
+
+.btn-secondary:hover:not(:disabled) {
+    border-color: var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow);
 }
 
 /* 仕様: docs/spec/manual-capture.md */
 .manual-capture {
-    background: #3498db;
-    color: white;
+    background: var(--info);
+    color: var(--on-accent);
+}
+
+/* 情報のボタン（全選択・ダウンロード） */
+.btn-info {
+    background: var(--info);
+    color: var(--on-accent);
 }
 
 .btn-danger {
-    background: #dc3545;
-    color: white;
+    background: var(--danger);
+    color: var(--on-danger);
 }
 
 
@@ -347,8 +435,9 @@ input[type="number"] {
     margin-top: 8px;
     padding: 8px;
     border-radius: 4px;
-    background: #000;
-    color: #00ff00;
+    background: var(--log-bg);
+    color: var(--accent-2);
+    border: 1px solid var(--line);
     font-family: monospace;
     font-size: 11px;
     overflow-y: auto;
@@ -369,9 +458,9 @@ input[type="number"] {
     display: flex;
     flex-direction: column;
     position: relative;
-    border: 1px solid #333;
+    border: 1px solid var(--line);
     border-radius: 8px;
-    background: #1e1e1e;
+    background: var(--field);
     overflow: hidden;
 }
 
@@ -385,7 +474,7 @@ input[type="number"] {
 .card-info {
     padding: 6px 8px;
     font-size: 12px;
-    color: #ccc;
+    color: var(--text);
     text-align: center;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -393,7 +482,8 @@ input[type="number"] {
 }
 
 .card.selected {
-    border: 2px solid #2ecc71;
+    border: 2px solid var(--accent);
+    box-shadow: 0 0 10px var(--accent-glow);
 }
 
 .select-checkbox {
@@ -403,7 +493,7 @@ input[type="number"] {
     z-index: 10;
     width: 20px;
     height: 20px;
-    accent-color: #2ecc71;
+    accent-color: var(--accent);
 }
 
 /* 仕様: docs/spec/manual-capture.md（手動撮影で保存された画像であることを示すバッジ） */
@@ -414,8 +504,8 @@ input[type="number"] {
     z-index: 10;
     padding: 2px 6px;
     border-radius: 10px;
-    background: #3498db;
-    color: #fff;
+    background: var(--info);
+    color: var(--on-accent);
     font-size: 10px;
     font-weight: bold;
 }
@@ -425,10 +515,10 @@ input[type="number"] {
     grid-column: 1 / -1;
     margin: 4px 0 -2px;
     padding: 4px 2px;
-    color: #9a9a9a;
+    color: var(--text-muted);
     font-size: 13px;
     font-weight: bold;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--line);
     display: flex;
     align-items: center;
     gap: 4px;
@@ -440,7 +530,7 @@ input[type="number"] {
 }
 
 .session-title.editable:hover {
-    color: #ddd;
+    color: var(--text);
 }
 
 .session-name-input {
@@ -456,22 +546,24 @@ input[type="number"] {
 
 .session-action {
     padding: 2px 10px;
-    border: 1px solid #444;
+    border: 1px solid var(--line-strong);
     border-radius: 4px;
-    background: #252525;
-    color: #ccc;
+    background: var(--field);
+    color: var(--text);
     font-size: 12px;
     cursor: pointer;
 }
 
 .session-action:hover {
-    background: #333;
-    color: #fff;
+    border-color: var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow);
 }
 
 .session-delete:hover {
-    background: #c0392b;
-    border-color: #c0392b;
+    background: var(--danger);
+    border-color: var(--danger);
+    color: var(--on-danger);
+    box-shadow: none;
 }
 
 /* 仕様: docs/spec/session-grouping.md（並べ替え中の表示。青い線が入れる位置） */
@@ -480,11 +572,11 @@ input[type="number"] {
 }
 
 .card.drop-before {
-    box-shadow: -5px 0 0 #3498db;
+    box-shadow: -5px 0 0 var(--info);
 }
 
 .card.drop-after {
-    box-shadow: 5px 0 0 #3498db;
+    box-shadow: 5px 0 0 var(--info);
 }
 
 
@@ -502,7 +594,7 @@ input[type="number"] {
     width: 100%;
     height: 100%;
     padding: 20px;
-    background: rgba(0, 0, 0, 0.9);
+    background: rgba(2, 8, 14, 0.92);
 }
 
 .preview-content {
@@ -534,8 +626,9 @@ input[type="number"] {
     height: 40px;
     border: none;
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.5);
-    color: #fff;
+    background: rgba(5, 13, 22, 0.7);
+    border: 1px solid var(--line-strong);
+    color: var(--text);
     font-size: 24px;
     line-height: 1;
     cursor: pointer;
@@ -544,7 +637,7 @@ input[type="number"] {
 .preview-info {
     margin-top: 12px;
     font-size: 14px;
-    color: #ddd;
+    color: var(--text);
 }
 
 .preview-actions-corner {
@@ -558,9 +651,9 @@ input[type="number"] {
 
 .action-btn {
     padding: 10px 15px;
-    background: rgba(40, 40, 40, 0.8);
-    color: white;
-    border: 1px solid #666;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--line-strong);
     border-radius: 4px; /* 四角形に変更 */
     cursor: pointer;
     font-size: 16px;
@@ -569,14 +662,16 @@ input[type="number"] {
 
 /* ダウンロードボタンのホバー */
 .download-btn:hover {
-    background: #3498db; /* 青系に変更 */
-    border-color: #2980b9;
+    background: var(--info);
+    border-color: var(--info);
+    color: var(--on-accent);
 }
 
 /* 削除ボタンのホバー */
 .delete-btn:hover {
-    background: #e74c3c; /* 赤系に変更 */
-    border-color: #c0392b;
+    background: var(--danger);
+    border-color: var(--danger);
+    color: var(--on-danger);
 }
 
 .nav-btn {
@@ -587,8 +682,9 @@ input[type="number"] {
     padding: 10px 14px;
     border: none;
     border-radius: 6px;
-    background: rgba(46, 204, 113, 0.6);
-    color: white;
+    background: rgba(5, 13, 22, 0.7);
+    border: 1px solid var(--accent);
+    color: var(--accent);
     cursor: pointer;
 }
 
@@ -651,15 +747,15 @@ input[type="number"] {
 .setup-device {
     margin-bottom: 8px;
     padding: 8px 10px;
-    border: 1px solid #333;
+    border: 1px solid var(--line);
     border-radius: 8px;
-    background: #161616;
+    background: var(--surface);
 }
 
 .setup-device-name {
     margin-bottom: 6px;
     font-weight: bold;
-    color: #ddd;
+    color: var(--text);
 }
 
 .setup-item {
@@ -673,42 +769,43 @@ input[type="number"] {
 }
 
 .setup-detail {
-    color: #aaa;
+    color: var(--text-muted);
     font-size: 13px;
 }
 
 .setup-link {
-    color: #3498db;
+    color: var(--info);
     text-decoration: underline;
 }
 
 .setup-button {
     margin-top: 6px;
     padding: 5px 12px;
-    border: 1px solid #3498db;
+    border: 1px solid var(--accent);
     border-radius: 5px;
-    background: #1f2d3a;
-    color: #cfe8fb;
+    background: var(--accent-soft);
+    color: var(--accent);
     font-size: 13px;
     cursor: pointer;
 }
 
 .setup-button:hover {
-    background: #2a4157;
+    box-shadow: 0 0 8px var(--accent-glow);
 }
 
 .setup-message {
     margin-top: 8px;
     padding: 8px 10px;
     border-radius: 6px;
-    background: #2a2a1a;
-    color: #f1e6a6;
+    background: var(--field);
+    border-left: 3px solid var(--accent-2);
+    color: var(--text);
     font-size: 13px;
 }
 
 .setup-ready {
     margin-top: 6px;
-    color: #2ecc71;
+    color: var(--accent);
     font-weight: bold;
 }
 
@@ -723,22 +820,22 @@ input[type="number"] {
     max-height: none;
     overflow: hidden;
     padding: 16px 18px;
-    border: 1px solid #333;
+    border: 1px solid var(--line);
     border-radius: 12px;
-    background: #1a1a1a;
+    background: var(--surface);
 }
 
 .connection-title {
     margin: 0;
     padding-bottom: 8px;
     font-size: 18px;
-    border-bottom: 2px solid #2ecc71;
-    color: #2ecc71;
+    border-bottom: 2px solid var(--accent);
+    color: var(--accent);
 }
 
 .connection-lead {
     margin: 8px 0 0;
-    color: #bbb;
+    color: var(--text-muted);
     font-size: 13px;
 }
 
@@ -771,7 +868,7 @@ input[type="number"] {
     align-items: baseline;
     justify-content: space-between;
     margin: 8px 0 6px;
-    color: #ddd;
+    color: var(--text);
     font-size: 15px;
 }
 
@@ -785,7 +882,7 @@ input[type="number"] {
     width: 100%;
     margin: 12px 0;
     border: 0;
-    border-top: 1px solid #333;
+    border-top: 1px solid var(--line);
 }
 
 .connection-footer {
@@ -803,9 +900,9 @@ input[type="number"] {
 
 .help-panel {
     padding: 18px;
-    border: 1px solid #333;
+    border: 1px solid var(--line);
     border-radius: 12px;
-    background: #161616;
+    background: var(--surface);
     line-height: 1.7;
 }
 
@@ -826,7 +923,16 @@ input[type="number"] {
     margin-top: 14px;
     padding: 10px 12px;
     border-radius: 8px;
-    background: #1f2d3a;
-    color: #cfe8fb;
+    background: var(--accent-soft);
+    border: 1px solid var(--line-strong);
+    color: var(--text);
     font-size: 14px;
+}
+
+/* 使い方ページの「← 戻る」 */
+.help-back {
+    padding: 8px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    text-decoration: none;
 }

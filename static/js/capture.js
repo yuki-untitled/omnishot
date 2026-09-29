@@ -23,7 +23,8 @@ const STATUS_POLL_INTERVAL_MS = 2000;
 function setStatus(capturing) {
     ui.isCapturing = capturing;
     elStatus.innerText = capturing ? "Status: Capturing..." : "Status: Idle";
-    elStatus.style.color = capturing ? "#2ecc71" : "#888";
+    // 仕様: docs/spec/ui-theme.md（撮影中はアクセントの色、停止中は補助の文字の色）
+    elStatus.classList.toggle("is-capturing", capturing);
     updateDeviceControls();
 }
 

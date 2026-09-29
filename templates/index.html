@@ -97,20 +97,20 @@
 
         <div class="controls" style="flex-wrap: nowrap; overflow-x: auto; justify-content: space-between; align-items: center; width: 100%;">
             <div style="display: flex; gap: 10px;">
-                <button id="selectAllBtn" class="btn" style="background: #3498db;">全選択</button>
-                <button id="deselectAllBtn" class="btn" style="background: #999; display: none;">選択解除</button>
+                <button id="selectAllBtn" class="btn btn-info">全選択</button>
+                <button id="deselectAllBtn" class="btn btn-secondary" style="display: none;">選択解除</button>
                 <button id="deleteSelectedBtn" class="btn stop" style="display: none;">消去 (<span id="selectCount">0</span>)</button>
-                <button id="downloadBtn" class="btn start" style="display: none; background: #3498db;">ダウンロード (<span id="downloadCount">0</span>)</button>
+                <button id="downloadBtn" class="btn btn-info" style="display: none;">ダウンロード (<span id="downloadCount">0</span>)</button>
             </div>
 
             <div style="display: flex; gap: 10px; align-items: center;">
-                <select id="deviceFilter" style="padding: 8px; border-radius: 5px; border: 1px solid #333; background: #252525; color: white;">
+                <select id="deviceFilter">
                     <option value="all">全デバイス</option>
                     <option value="ios">iOS のみ</option>
                     <option value="android">Android のみ</option>
                 </select>
 
-                <select id="sortSelect" style="padding: 8px; border-radius: 5px; border: 1px solid #333; background: #252525; color: white;">
+                <select id="sortSelect">
                     <option value="desc">新しい順</option>
                     <option value="asc">古い順</option>
                 </select>
