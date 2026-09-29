@@ -1,32 +1,22 @@
 # 仕様: docs/spec/native-window.md
 """アプリ終了時の後始末。"""
 import os
-import platform
 import shutil
-import tempfile
 
 from .device_manager import dev_manager
 from .paths import SAVE_DIR
 
 
 def _cleanup_temp_data():
-    """撮影データの保存先とiOS/Windowsの一時ファイルを削除する。"""
-    # 1. 保存フォルダの削除
+    """撮影データの保存先を削除する。
+
+    仕様: docs/spec/bugs/LOCAL-042_起動時と終了時の後始末がアプリが作っていないファイルやプロセスに影響する.md
+    消すのは、アプリ自身が作ったものだけ。OS の設定ファイルや、一時フォルダの、他のアプリのものは消さない
+    （iOS の画面取得に使う一時ファイルは、使い終わったときに、その場で削除している）。
+    go-ios の識別情報（アプリ用フォルダ）も消さない。
+    """
     if os.path.exists(SAVE_DIR):
         shutil.rmtree(SAVE_DIR)
-
-    # 2. iOSキャッシュ（selfidentity.plist）の削除
-    home = os.path.expanduser("~")
-    plist_path = os.path.join(home, "Library/Preferences/com.apple.selfidentity.plist")
-    if os.path.exists(plist_path):
-        os.remove(plist_path)
-
-    # 3. Windows一時ファイルの削除（該当する場合）
-    if platform.system() == "Windows":
-        tmp = tempfile.gettempdir()
-        for item in os.listdir(tmp):
-            if "ios" in item or "adb" in item:
-                shutil.rmtree(os.path.join(tmp, item), ignore_errors=True)
 
 
 def cleanup_on_exit():

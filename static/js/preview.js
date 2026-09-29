@@ -2,7 +2,7 @@
 // 画像のプレビュー
 // 仕様: docs/spec/gallery.md
 // ==========================================================================
-import { gallery, updateGallery } from './gallery.js';
+import { gallery, reloadGallery } from './gallery.js';
 import { captureUrl, downloadFrom, postJson } from './util.js';
 
 const elPreviewModal = document.getElementById('previewModal');
@@ -14,20 +14,27 @@ const elNextBtn = document.getElementById('nextBtn');
 const elPreviewDownloadBtn = document.getElementById('previewDownloadBtn');
 const elPreviewDeleteBtn = document.getElementById('previewDeleteBtn');
 
-let currentPreviewIndex = 0;
+// 仕様: docs/spec/bugs/LOCAL-043_プレビューで画像を削除すると削除した画像が表示され前後の移動が画面の並びと違う.md
+// プレビューの前後の移動と枚数は、ギャラリーが画面に表示している並び（gallery.displayOrder）に従う。
+// 開いている画像はファイル名で覚え、一覧が更新されて並びが変わっても、同じ画像を表示し続ける。
+let currentFile = null;
+
+function currentIndex() {
+    return gallery.displayOrder.indexOf(currentFile);
+}
 
 export function openPreview(filename) {
-    currentPreviewIndex = gallery.allImages.indexOf(filename);
+    currentFile = filename;
     showPreview();
 }
 
 function showPreview() {
-    const { allImages } = gallery;
-    if (allImages.length === 0) return;
+    const images = gallery.displayOrder;
+    const index = currentIndex();
+    if (index < 0) return;
 
-    const img = allImages[currentPreviewIndex];
-    if (elPreviewImage) elPreviewImage.src = `${captureUrl(img)}?t=${Date.now()}`;
-    if (elPreviewInfo) elPreviewInfo.innerText = `${currentPreviewIndex + 1} / ${allImages.length} - ${img}`;
+    if (elPreviewImage) elPreviewImage.src = `${captureUrl(currentFile)}?t=${Date.now()}`;
+    if (elPreviewInfo) elPreviewInfo.innerText = `${index + 1} / ${images.length} - ${currentFile}`;
     if (elPreviewModal) elPreviewModal.style.display = 'flex';
 }
 
@@ -39,44 +46,40 @@ function closePreview() {
     if (elPreviewModal) elPreviewModal.style.display = 'none';
 }
 
-function prevImage() {
-    if (currentPreviewIndex > 0) {
-        currentPreviewIndex--;
-        showPreview();
-    }
+function movePreview(step) {
+    const index = currentIndex() + step;
+    if (index < 0 || index >= gallery.displayOrder.length) return;
+    currentFile = gallery.displayOrder[index];
+    showPreview();
 }
 
-function nextImage() {
-    if (currentPreviewIndex < gallery.allImages.length - 1) {
-        currentPreviewIndex++;
-        showPreview();
-    }
-}
+const prevImage = () => movePreview(-1);
+const nextImage = () => movePreview(1);
 
 function downloadCurrentPreview() {
-    const filename = gallery.allImages[currentPreviewIndex];
-    downloadFrom(captureUrl(filename), filename);
+    if (currentIndex() < 0) return;
+    downloadFrom(captureUrl(currentFile), currentFile);
 }
 
 function deleteCurrentPreview() {
-    const filename = gallery.allImages[currentPreviewIndex];
-    if (!confirm(`${filename} を削除しますか？`)) return;
+    const index = currentIndex();
+    if (index < 0) return;
+    if (!confirm(`${currentFile} を削除しますか？`)) return;
 
-    postJson('/delete_selected', { filenames: [filename] }).then(() => {
-        // サーバーからデータ取得し直してUIを更新
-        updateGallery();
-
-        // モーダルの挙動制御
-        if (gallery.allImages.length <= 1) {
-            closePreview();
-        } else {
-            // 削除後、次の画像へスライド
-            if (currentPreviewIndex >= gallery.allImages.length - 1) {
-                currentPreviewIndex--;
+    // 削除の後に一覧を取得し直し、その一覧で、次に表示する画像を決める
+    // （画面の並びで、削除した画像の次。最後の画像だったときは前。1枚もなくなったら閉じる）
+    postJson('/delete_selected', { filenames: [currentFile] })
+        .then(() => reloadGallery())
+        .then(() => {
+            const images = gallery.displayOrder;
+            if (images.length === 0) {
+                closePreview();
+                return;
             }
+            currentFile = images[Math.min(index, images.length - 1)];
             showPreview();
-        }
-    });
+        })
+        .catch(err => console.error("Preview delete error:", err));
 }
 
 export function initPreview() {

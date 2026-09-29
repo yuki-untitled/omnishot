@@ -1,13 +1,13 @@
 # 仕様: docs/spec/native-window.md
 import platform
-import subprocess
+import sys
 import threading
 import time
 import urllib.request
 
 import webview
 
-from omnishot import create_app, paths
+from omnishot import create_app, port_guard
 from omnishot.logs import add_log
 
 HOST = '127.0.0.1'
@@ -64,19 +64,12 @@ def _accept_first_mouse_on_macos():
         add_log(f"⚠️ 最初のクリックを受け付ける設定に失敗しました: {e}")
 
 
-def _free_port():
-    """前回の起動で残ったプロセスがポートを握っていた場合に備え、使用中のプロセスを終了する。"""
-    try:
-        if platform.system() == "Windows":
-            subprocess.run(f'cmd /c "for /f \"tokens=5\" %a in (\'netstat -aon ^| findstr {PORT}\') do taskkill /f /pid %a"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=paths.CREATE_NO_WINDOW)
-        else:
-            subprocess.run(f"kill -9 $(lsof -t -i:{PORT})", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(0.3)
-    except Exception: pass
-
-
 if __name__ == '__main__':
-    _free_port()
+    # 仕様: docs/spec/bugs/LOCAL-042_起動時と終了時の後始末がアプリが作っていないファイルやプロセスに影響する.md
+    # 前回の OmniShot が残っていれば終了する。別のアプリがポートを使っているときは、終了せずに知らせて起動をやめる
+    if port_guard.free_port(PORT):
+        port_guard.show_port_in_use_dialog(PORT)
+        sys.exit(1)
 
     add_log("🚀 OmniShot を起動中...")
     app = create_app()

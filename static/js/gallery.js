@@ -24,6 +24,10 @@ export const gallery = {
     // 仕様: docs/spec/session-grouping.md（ファイル名 -> セッションID、セッションID -> セッション情報）
     imageSessions: {},
     sessions: {},
+    // 仕様: docs/spec/bugs/LOCAL-043_プレビューで画像を削除すると削除した画像が表示され前後の移動が画面の並びと違う.md
+    // ギャラリーが画面に表示している画像の並び（絞り込み・並び順・セッションごとのまとまり・手動の並べ替えを反映）。
+    // プレビューの前後の移動は、この並びに従う。
+    displayOrder: [],
 };
 let currentImagesJson = "";
 const selectedFiles = new Set();
@@ -35,9 +39,9 @@ const manualOrder = new Map();
 let isEditingSessionName = false;
 let isDragging = false;
 
-// ギャラリー更新ロジック（定期ポーリング）
-export function updateGallery() {
-    fetch('/images')
+// サーバーから一覧を1回取得し、変化があれば画面に反映する（取得と反映が終わると解決する）
+export function reloadGallery() {
+    return fetch('/images')
         .then(res => res.json())
         .then(data => {
             const newJson = JSON.stringify(data);
@@ -53,8 +57,13 @@ export function updateGallery() {
                 gallery.sessions = data.sessions || {};
                 refreshGalleryUI();
             }
-            setTimeout(updateGallery, 1500);
-        })
+        });
+}
+
+// ギャラリー更新ロジック（定期ポーリング）。画面の初期化のときに1回だけ開始する
+export function updateGallery() {
+    reloadGallery()
+        .then(() => setTimeout(updateGallery, 1500))
         .catch(err => {
             console.error("Gallery update error:", err);
             setTimeout(updateGallery, 3000); // エラー時は少し間隔を空けてリトライ
@@ -175,6 +184,7 @@ export function refreshGalleryUI() {
     });
     const timestamp = Date.now();
     const html = [];
+    const displayOrder = [];
     orderedGroups.forEach(images => {
         const sessionId = sessionIdOf(images);
         let shown = images;
@@ -183,8 +193,12 @@ export function refreshGalleryUI() {
             shown = sessionImagesInDisplayOrder(sessionId).filter(img => inGroup.has(img));
         }
         html.push(sessionHeadingHtml(images[0]));
-        shown.forEach(img => html.push(cardHtml(img, timestamp)));
+        shown.forEach(img => {
+            html.push(cardHtml(img, timestamp));
+            displayOrder.push(img);
+        });
     });
+    gallery.displayOrder = displayOrder;
     elGallery.innerHTML = html.join('');
     updateSessionSelectButtons();
 }
