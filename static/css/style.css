@@ -438,6 +438,52 @@ input[type="number"] {
     font-size: 13px;
     font-weight: bold;
     border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* 仕様: docs/spec/session-grouping.md（セッション名の変更・セッション単位のダウンロード） */
+.session-title.editable {
+    cursor: text;
+}
+
+.session-title.editable:hover {
+    color: #ddd;
+}
+
+.session-name-input {
+    width: 240px;
+    max-width: 60%;
+}
+
+.session-download {
+    margin-left: auto;
+    padding: 2px 10px;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background: #252525;
+    color: #ccc;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.session-download:hover {
+    background: #333;
+    color: #fff;
+}
+
+/* 仕様: docs/spec/session-grouping.md（並べ替え中の表示。青い線が入れる位置） */
+.card.dragging {
+    opacity: 0.4;
+}
+
+.card.drop-before {
+    box-shadow: -5px 0 0 #3498db;
+}
+
+.card.drop-after {
+    box-shadow: 5px 0 0 #3498db;
 }
 
 

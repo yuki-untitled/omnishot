@@ -2,6 +2,7 @@
 import os
 import threading
 import time
+from urllib.parse import quote
 
 from flask import render_template, request, jsonify, send_from_directory, send_file, Response
 
@@ -172,6 +173,42 @@ def register(app):
 
         memory_file, zip_name = storage.build_zip(filenames, data.get('zipName', ''))
         return send_file(memory_file, mimetype='application/zip', as_attachment=True, download_name=zip_name)
+
+    # 仕様: docs/spec/session-grouping.md（セッション名の変更）
+    @app.route('/rename_session', methods=['POST'])
+    def rename_session():
+        data = request.json or {}
+        session_id = data.get('sessionId')
+        if not storage.is_session_id(session_id):
+            return "Session not found", 404
+        try:
+            saved_name = storage.set_session_name(session_id, data.get('name', ''))
+        except ValueError:
+            return "Invalid session name", 400
+        add_log(f"✏️ セッション名を変更しました: セッション{session_id} → {saved_name or '（未設定）'}")
+        return jsonify({"sessionId": session_id, "name": saved_name})
+
+    # 仕様: docs/spec/session-grouping.md（セッション単位のダウンロード）
+    @app.route('/download_session', methods=['POST'])
+    def download_session():
+        data = request.json or {}
+        session_id = data.get('sessionId')  # null は「未分類」
+        if session_id is not None and not storage.is_session_id(session_id):
+            return "Session not found", 404
+        order = data.get('order', [])
+        # 仕様: docs/spec/bugs/LOCAL-009_一括削除・ZIPダウンロードがキャプチャ保存先の外のファイルを扱える.md
+        if not storage.all_plain_filenames(order):
+            return "Invalid filename", 400
+        members = storage.session_members(session_id)
+        if not members:
+            return "No files", 400
+
+        zip_name = storage.session_zip_name(session_id)
+        memory_file, zip_name = storage.build_zip(storage.order_session_images(members, order), zip_name, numbered=True)
+        response = send_file(memory_file, mimetype='application/zip', as_attachment=True, download_name=zip_name)
+        # 画面が保存に使うファイル名（日本語を含むためURLエンコードして渡す）
+        response.headers['X-Zip-Name'] = quote(zip_name)
+        return response
 
     # ------------------------------------------------------------------
     # ログ

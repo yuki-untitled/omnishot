@@ -10,6 +10,8 @@ from . import display_names, state
 from .paths import SAVE_DIR
 
 _UNSAFE_CHARS = re.compile(r'[\\/\x00-\x1f]')
+# 仕様: docs/spec/session-grouping.md（ZIPのファイル名に使えない文字）
+_ZIP_NAME_FORBIDDEN = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
 
 def _sanitize_filename_component(name):
@@ -34,14 +36,15 @@ def exists(filename):
 def list_images():
     """保存した画像のファイル名を、新しい順に返す。"""
     images = [f for f in os.listdir(SAVE_DIR) if f.endswith('.png')]
-
-    def mtime(name):
-        try:
-            return os.path.getmtime(os.path.join(SAVE_DIR, name))
-        except FileNotFoundError:
-            return 0
-    images.sort(key=mtime, reverse=True)
+    images.sort(key=_mtime, reverse=True)
     return images
+
+
+def _mtime(name):
+    try:
+        return os.path.getmtime(os.path.join(SAVE_DIR, name))
+    except FileNotFoundError:
+        return 0
 
 
 def gallery_data():
@@ -58,6 +61,55 @@ def gallery_data():
         "imageSessions": {name: state.image_sessions[name] for name in images if name in state.image_sessions},
         "sessions": state.sessions,
     }
+
+
+# 仕様: docs/spec/session-grouping.md（セッション名の変更）
+SESSION_NAME_MAX_LENGTH = 50
+_CONTROL_CHARS = re.compile(r'[\x00-\x1f]')
+UNCLASSIFIED_NAME = "未分類"
+
+
+def is_session_id(session_id):
+    return isinstance(session_id, int) and not isinstance(session_id, bool) and session_id in state.sessions
+
+
+def set_session_name(session_id, name):
+    """セッション名を設定し、保存した名前を返す。空にすると未設定に戻す。1〜50文字を超える名前は ValueError。"""
+    cleaned = _CONTROL_CHARS.sub('', name).strip() if isinstance(name, str) else None
+    if cleaned is None or len(cleaned) > SESSION_NAME_MAX_LENGTH:
+        raise ValueError("Invalid session name")
+    if cleaned:
+        state.sessions[session_id]["name"] = cleaned
+    else:
+        state.sessions[session_id].pop("name", None)
+    return cleaned
+
+
+# 仕様: docs/spec/session-grouping.md（セッション単位のダウンロード）
+def session_members(session_id):
+    """セッションの画像を撮影の古い順に返す。session_id が None のときは「未分類」の画像。"""
+    images = [n for n in list_images()
+              if (n not in state.image_sessions if session_id is None else state.image_sessions.get(n) == session_id)]
+    return sorted(images, key=lambda n: (_mtime(n), n))
+
+
+def order_session_images(members, order):
+    """並べ替えた順序（order）を members に適用する。order にない画像は、末尾に撮影の古い順で並べる。"""
+    member_set = set(members)
+    ordered = []
+    for name in order or []:
+        if name in member_set and name not in ordered:
+            ordered.append(name)
+    return ordered + [n for n in members if n not in ordered]
+
+
+def session_zip_name(session_id):
+    """セッション単位のZIPのファイル名（拡張子なし）。ファイル名に使えない文字は _ に置き換える。"""
+    if session_id is None:
+        name = UNCLASSIFIED_NAME
+    else:
+        name = state.sessions[session_id].get("name") or f"セッション{session_id}"
+    return _ZIP_NAME_FORBIDDEN.sub('_', name)
 
 
 def delete_images(filenames):
@@ -101,15 +153,21 @@ def _sanitize_zip_name(name):
 
 
 # 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md（ZIP内のファイル名は表示名を使う）
-def build_zip(filenames, zip_name):
-    """指定した画像をまとめた ZIP を作り、(ZIPのデータ, ダウンロードするファイル名) を返す。ファイル名は検証済みであること。"""
+def build_zip(filenames, zip_name, numbered=False):
+    """指定した画像をまとめた ZIP を作り、(ZIPのデータ, ダウンロードするファイル名) を返す。ファイル名は検証済みであること。
+
+    numbered が True のときは、ZIP 内のファイル名の前に、並び順どおりの3桁の連番と _ を付ける。
+    """
     names = display_names.load_all()
     memory_file = io.BytesIO()
+    number = 0
     with zipfile.ZipFile(memory_file, 'w') as zf:
         for name in filenames:
             path = os.path.join(SAVE_DIR, name)
             if os.path.exists(path):
-                zf.write(path, arcname=_arcname_for(name, names.get(name)))
+                number += 1
+                arcname = _arcname_for(name, names.get(name))
+                zf.write(path, arcname=f"{number:03d}_{arcname}" if numbered else arcname)
     memory_file.seek(0)
 
     zip_name = _sanitize_zip_name(zip_name)

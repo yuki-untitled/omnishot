@@ -149,3 +149,87 @@ def test_settings_default_when_not_sent(client):
     # 仕様: docs/spec/screenshot-capture.md#実現内容what（設定の初期値）
     client.get("/update_settings")
     assert (state.current_config["interval"], state.current_config["settling"]) == (0.3, 1.0)
+
+
+# 仕様: docs/spec/session-grouping.md（セッション名の変更・セッション単位のダウンロード）
+def _session(session_id, *names, name=None):
+    state.sessions[session_id] = {"startedAt": "2026/09/29 10:00:00"}
+    if name:
+        state.sessions[session_id]["name"] = name
+    for n in names:
+        state.image_sessions[n] = session_id
+
+
+def test_rename_session(client):
+    _session(1)
+    res = client.post("/rename_session", json={"sessionId": 1, "name": "  ログイン手順 "})
+    assert res.get_json() == {"sessionId": 1, "name": "ログイン手順"}
+    assert state.sessions[1]["name"] == "ログイン手順"
+    # /images にも名前が含まれる
+    assert client.get("/images").get_json()["sessions"]["1"]["name"] == "ログイン手順"
+    # 空にすると未設定に戻る
+    client.post("/rename_session", json={"sessionId": 1, "name": " "})
+    assert "name" not in state.sessions[1]
+
+
+def test_rename_session_limits(client):
+    _session(1)
+    assert client.post("/rename_session", json={"sessionId": 1, "name": "あ" * 50}).status_code == 200
+    assert client.post("/rename_session", json={"sessionId": 1, "name": "あ" * 51}).status_code == 400
+    assert client.post("/rename_session", json={"sessionId": 9, "name": "x"}).status_code == 404
+    assert client.post("/rename_session", json={"sessionId": None, "name": "x"}).status_code == 404
+    assert client.post("/rename_session", json={"sessionId": True, "name": "x"}).status_code == 404
+
+
+def test_download_session_numbers_files(client, save_dir):
+    for i, n in enumerate(["a.png", "b.png", "c.png", "other.png", "loose.png"]):
+        _touch(save_dir, n, 100 + i)
+    _session(1, "a.png", "b.png", "c.png", name="ログイン/手順")
+    _session(2, "other.png")
+    client.post("/rename", json={"filename": "b.png", "displayName": "確認画面"})
+
+    res = client.post("/download_session", json={"sessionId": 1})
+    assert res.status_code == 200
+    assert res.headers["X-Zip-Name"] == "%E3%83%AD%E3%82%B0%E3%82%A4%E3%83%B3_%E6%89%8B%E9%A0%86.zip"
+    with zipfile.ZipFile(io.BytesIO(res.data)) as zf:
+        assert zf.namelist() == ["001_a.png", "002_確認画面.png", "003_c.png"]
+
+
+def test_download_session_applies_order(client, save_dir):
+    for i, n in enumerate(["a.png", "b.png", "c.png"]):
+        _touch(save_dir, n, 100 + i)
+    _session(1, "a.png", "b.png", "c.png")
+    _session(2)  # 別セッションの画像や存在しない画像は、順序に含めても無視される
+    state.image_sessions["z.png"] = 2
+    res = client.post("/download_session", json={"sessionId": 1, "order": ["c.png", "z.png", "gone.png", "a.png"]})
+    assert res.headers["X-Zip-Name"] == "%E3%82%BB%E3%83%83%E3%82%B7%E3%83%A7%E3%83%B31.zip"
+    with zipfile.ZipFile(io.BytesIO(res.data)) as zf:
+        assert zf.namelist() == ["001_c.png", "002_a.png", "003_b.png"]
+
+
+def test_download_session_unclassified(client, save_dir):
+    _touch(save_dir, "a.png", 100)
+    _touch(save_dir, "loose.png", 200)
+    _session(1, "a.png")
+    res = client.post("/download_session", json={"sessionId": None})
+    assert res.headers["X-Zip-Name"] == "%E6%9C%AA%E5%88%86%E9%A1%9E.zip"
+    with zipfile.ZipFile(io.BytesIO(res.data)) as zf:
+        assert zf.namelist() == ["001_loose.png"]
+
+
+@pytest.mark.parametrize("body, status", [
+    ({"sessionId": 9}, 404),
+    ({"sessionId": 1}, 400),  # 画像が1枚もない
+    ({"sessionId": 1, "order": ["../a.png"]}, 400),
+    ({"sessionId": 1, "order": "a.png"}, 400),
+])
+def test_download_session_rejects(client, body, status):
+    _session(1)
+    assert client.post("/download_session", json=body).status_code == status
+
+
+def test_download_selected_is_not_numbered(client, save_dir):
+    _touch(save_dir, "a.png", 100)
+    res = client.post("/download_selected", json={"filenames": ["a.png"]})
+    with zipfile.ZipFile(io.BytesIO(res.data)) as zf:
+        assert zf.namelist() == ["a.png"]
