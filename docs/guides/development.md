@@ -34,7 +34,8 @@
 │   │   ├── gallery.js    # ギャラリー・選択・表示名の変更
 │   │   ├── preview.js    # 画像のプレビュー
 │   │   ├── logs.js       # Live Logs
-│   │   ├── guide.js      # 設定ガイド
+│   │   ├── connection.js # 接続確認（端末の準備の状態）
+│   │   ├── help.js       # 使い方ページのタブ
 │   │   └── state.js / util.js # 共有状態・共通処理
 │   └── favicon.ico       # ブラウザタブ用アイコン
 └── templates/

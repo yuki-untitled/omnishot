@@ -92,20 +92,11 @@ body {
     color: #fff;
 }
 
-.header-guide {
-    background: #444;
-    color: #fff;
-}
-
 .header-help:hover {
     background: #666;
 }
 
-.header-guide:hover {
-    background: #555;
-}
-
-/* 設定ガイドの OS の切り替え。選んでいる方を緑にする */
+/* 使い方ページのタブ。選んでいるタブを緑にする */
 .btn.guide-tab {
     flex: 1;
     background: #555;
@@ -650,4 +641,192 @@ input[type="number"] {
     .btn { padding: 7px 10px; font-size: 11px; }
     .prev-btn { left: 10px; }
     .next-btn { right: 10px; }
+}
+
+/* 仕様: docs/spec/setup-guide.md（セットアップガイドの状態確認） */
+.setup-status {
+    margin-bottom: 14px;
+}
+
+.setup-device {
+    margin-bottom: 8px;
+    padding: 8px 10px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: #161616;
+}
+
+.setup-device-name {
+    margin-bottom: 6px;
+    font-weight: bold;
+    color: #ddd;
+}
+
+.setup-item {
+    display: flex;
+    gap: 8px;
+    padding: 3px 0;
+}
+
+.setup-item-body {
+    flex: 1;
+}
+
+.setup-detail {
+    color: #aaa;
+    font-size: 13px;
+}
+
+.setup-link {
+    color: #3498db;
+    text-decoration: underline;
+}
+
+.setup-button {
+    margin-top: 6px;
+    padding: 5px 12px;
+    border: 1px solid #3498db;
+    border-radius: 5px;
+    background: #1f2d3a;
+    color: #cfe8fb;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.setup-button:hover {
+    background: #2a4157;
+}
+
+.setup-message {
+    margin-top: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: #2a2a1a;
+    color: #f1e6a6;
+    font-size: 13px;
+}
+
+.setup-ready {
+    margin-top: 6px;
+    color: #2ecc71;
+    font-weight: bold;
+}
+
+/* 仕様: docs/spec/setup-guide.md（接続確認の画面） */
+.connection-content {
+    align-items: stretch;
+    /* 端末の有無や台数で大きさが変わらないよう、大きさを固定する */
+    box-sizing: border-box;
+    width: min(90%, 720px);
+    max-width: none;
+    height: min(90vh, 460px);
+    max-height: none;
+    overflow: hidden;
+    padding: 16px 18px;
+    border: 1px solid #333;
+    border-radius: 12px;
+    background: #1a1a1a;
+}
+
+.connection-title {
+    margin: 0;
+    padding-bottom: 8px;
+    font-size: 18px;
+    border-bottom: 2px solid #2ecc71;
+    color: #2ecc71;
+}
+
+.connection-lead {
+    margin: 8px 0 0;
+    color: #bbb;
+    font-size: 13px;
+}
+
+/* iPhone と Android を横に並べる。狭い幅では縦に並べる */
+.connection-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.connection-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 6px;
+}
+
+.connection-column {
+    min-width: 0;
+}
+
+@media (max-width: 640px) {
+    .connection-columns {
+        grid-template-columns: 1fr;
+    }
+}
+
+.connection-section {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 8px 0 6px;
+    color: #ddd;
+    font-size: 15px;
+}
+
+.connection-help-link {
+    font-size: 13px;
+    font-weight: normal;
+}
+
+.connection-divider {
+    flex: none;
+    width: 100%;
+    margin: 12px 0;
+    border: 0;
+    border-top: 1px solid #333;
+}
+
+.connection-footer {
+    flex: none;
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* 仕様: docs/spec/setup-guide.md（使い方ページのタブ） */
+.help-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.help-panel {
+    padding: 18px;
+    border: 1px solid #333;
+    border-radius: 12px;
+    background: #161616;
+    line-height: 1.7;
+}
+
+.help-panel h2 {
+    margin-top: 0;
+}
+
+.help-panel h2:not(:first-child) {
+    margin-top: 24px;
+}
+
+.help-panel ul,
+.help-panel ol {
+    padding-left: 20px;
+}
+
+.help-note {
+    margin-top: 14px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #1f2d3a;
+    color: #cfe8fb;
+    font-size: 14px;
 }

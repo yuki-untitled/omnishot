@@ -1,5 +1,6 @@
 """画面からの要求を受け付ける（Flask のエンドポイント）。処理の本体は各モジュールに置く。"""
 import os
+import platform
 import threading
 import time
 from urllib.parse import quote
@@ -71,6 +72,42 @@ def register(app):
         for message in dev_manager.android_device_problems:
             add_log(message)
         return jsonify(devices)
+
+    # ------------------------------------------------------------------
+    # セットアップガイド
+    # 仕様: docs/spec/setup-guide.md
+    # ------------------------------------------------------------------
+    @app.route('/setup_status')
+    def setup_status():
+        return jsonify({
+            "ios": dev_manager.ios_setup_status(),
+            "android": {"devices": dev_manager.android_setup_status()},
+            "windows": platform.system() == "Windows",
+        })
+
+    def _refuse_while_capturing():
+        # 自動撮影中の端末や adb サーバーに影響しないよう、撮影中は端末の設定を変える操作を受け付けない
+        return jsonify({"result": "failed", "message": "自動撮影中は実行できません。停止してからもう一度押してください。"}), 409
+
+    @app.route('/setup/ios_developer_mode', methods=['POST'])
+    def setup_ios_developer_mode():
+        if state.is_running:
+            return _refuse_while_capturing()
+        udid = (request.json or {}).get('udid')
+        if not isinstance(udid, str) or not udid:
+            return jsonify({"result": "failed", "message": "端末が指定されていません。"}), 400
+        result = dev_manager.enable_ios_developer_mode(udid)
+        add_log(f"🍏 デベロッパモードの項目の表示を実行しました（…{udid[-6:]}）: {result['result']}")
+        return jsonify(result)
+
+    @app.route('/setup/android_authorization', methods=['POST'])
+    def setup_android_authorization():
+        if state.is_running:
+            return _refuse_while_capturing()
+        ok = dev_manager.restart_adb_server()
+        add_log("🤖 adb サーバーを起動し直しました。端末の画面で USB デバッグを許可してください" if ok
+                else "⚠️ adb サーバーを起動し直せませんでした")
+        return jsonify({"result": "requested" if ok else "failed"})
 
     @app.route('/start')
     def start():

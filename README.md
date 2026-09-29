@@ -20,7 +20,7 @@ OmniShot は、iOS および Android 端末の画面変化を検知し、自動�
 * [docs/spec/gallery.md](docs/spec/gallery.md) — Web UI ギャラリー・表示名編集
 * [docs/spec/session-grouping.md](docs/spec/session-grouping.md) — 撮影セッションのグルーピング
 * [docs/spec/native-window.md](docs/spec/native-window.md) — ネイティブウィンドウ化
-* [docs/spec/setup-guide.md](docs/spec/setup-guide.md) — セットアップガイドの状態確認
+* [docs/spec/setup-guide.md](docs/spec/setup-guide.md) — 接続確認と準備の手順
 
 ## 📚 ドキュメント
 

@@ -29,6 +29,9 @@ ANDROID_STATE_HINTS = {
     "authorizing": "USBデバッグの許可を確認しています。少し待ってから、更新ボタンを押してください。",
 }
 
+# 仕様: docs/spec/setup-guide.md（go-ios の devmode enable は、パスコードを設定した端末で「項目を表示した」ことを、このメッセージを含むエラーで返す）
+DEVMODE_REVEALED_MARKER = "Developer Mode menu has been revealed"
+
 # iOSストリーム（mjpegサーバー）が待ち受けるポート。capture.py の受信側もこれを参照する。
 IOS_STREAM_PORT = 3333
 
@@ -202,30 +205,44 @@ class DeviceManager:
         """USB接続されている端末の一覧を返す。要素は {"id", "os", "name"}（nameは取得できなければNone）。"""
         return self._list_android_devices() + self._list_ios_devices()
 
+    def _android_usb_entries(self):
+        """adb が認識した、USB接続の Android 端末を [{"id", "state", "name"}] で返す。
+
+        state は adb の状態（"device"・"unauthorized"・"offline"・"no permissions" など）。name は機種名（無ければ None）。
+        """
+        res = self._adb_devices()
+        # 仕様: docs/spec/native-window.md（終了時に adb サーバーを止めるため、次の起動時はサーバーが起動し直す）
+        # サーバーを起動した直後は端末の認識が間に合わないことがあるため、1秒待って1回だけ検出し直す
+        if "daemon started successfully" in res.stderr and len(res.stdout.strip().split('\n')) <= 1:
+            time.sleep(1.0)
+            res = self._adb_devices()
+        entries = []
+        # 2行目以降が端末。例: "<serial> device usb:1-1 product:x model:Pixel_7 ..."
+        for line in res.stdout.strip().split('\n')[1:]:
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            serial, adb_state = parts[0], parts[1]
+            # 仕様: docs/spec/device-selection.md（USB接続の端末のみを対象にする）
+            if not any(p.startswith("usb:") for p in parts[2:]):
+                continue
+            model = next((p[len("model:"):] for p in parts if p.startswith("model:")), None)
+            entries.append({
+                "id": serial,
+                "state": "no permissions" if adb_state == "no" else adb_state,
+                "name": model.replace("_", " ") if model else None,
+            })
+        return entries
+
     def _list_android_devices(self):
         devices = []
         problems = []
         try:
-            res = self._adb_devices()
-            # 仕様: docs/spec/native-window.md（終了時に adb サーバーを止めるため、次の起動時はサーバーが起動し直す）
-            # サーバーを起動した直後は端末の認識が間に合わないことがあるため、1秒待って1回だけ検出し直す
-            if "daemon started successfully" in res.stderr and len(res.stdout.strip().split('\n')) <= 1:
-                time.sleep(1.0)
-                res = self._adb_devices()
-            # 2行目以降が端末。例: "<serial> device usb:1-1 product:x model:Pixel_7 ..."
-            for line in res.stdout.strip().split('\n')[1:]:
-                parts = line.split()
-                if len(parts) < 2:
+            for entry in self._android_usb_entries():
+                if entry["state"] != "device":
+                    problems.append(_android_state_problem(entry["id"], entry["state"]))
                     continue
-                serial, adb_state = parts[0], parts[1]
-                # 仕様: docs/spec/device-selection.md（USB接続の端末のみを対象にする）
-                if not any(p.startswith("usb:") for p in parts[2:]):
-                    continue
-                if adb_state != "device":
-                    problems.append(_android_state_problem(serial, "no permissions" if adb_state == "no" else adb_state))
-                    continue
-                model = next((p[len("model:"):] for p in parts if p.startswith("model:")), None)
-                devices.append({"id": serial, "os": "android", "name": model.replace("_", " ") if model else None})
+                devices.append({"id": entry["id"], "os": "android", "name": entry["name"]})
         except Exception as e:
             print(f"DEBUG: Android check failed: {e}")
         self.android_device_problems = problems
@@ -504,6 +521,78 @@ class DeviceManager:
             return True
         add_log("⚠️ トンネルの起動を待ちましたが、端末の新しい接続を確認できませんでした")
         return False
+
+    # ------------------------------------------------------------------
+    # セットアップガイド
+    # 仕様: docs/spec/setup-guide.md
+    # ------------------------------------------------------------------
+    def ios_setup_status(self):
+        """iPhone の準備状況を返す。
+
+        {"available": usbmuxd（iTunes など）に接続できたか,
+         "devices": [{"id", "name", "trusted": このコンピュータを信頼済みか, "developerMode": True/False/None（確認できない）}]}
+        """
+        if _usbmuxd_connection_types() is None:
+            return {"available": False, "devices": []}
+        devices = []
+        for device in self._list_ios_devices():
+            trusted = device["name"] is not None
+            devices.append({
+                "id": device["id"],
+                "name": device["name"],
+                "trusted": trusted,
+                "developerMode": self._ios_developer_mode(device["id"]) if trusted else None,
+            })
+        return {"available": True, "devices": devices}
+
+    def _ios_developer_mode(self, udid):
+        """デベロッパモードがオンならTrue、オフならFalse、確認できなければNone。"""
+        try:
+            res = _run_go_ios([self.ios, f"--udid={udid}", "devmode", "get"], timeout=3.0, text=True)
+            return next((data["DeveloperModeEnabled"] for data in _json_lines(res.stdout)
+                         if isinstance(data.get("DeveloperModeEnabled"), bool)), None)
+        except Exception:
+            return None
+
+    def enable_ios_developer_mode(self, udid):
+        """iPhone の設定に「デベロッパモード」の項目を表示する（パスコードが無い端末は、そのままオンになり再起動する）。
+
+        {"result": "revealed"（項目を表示した）/ "enabled"（オンにした。再起動する）/ "failed", "message": 失敗の理由（失敗時のみ）}
+        """
+        if udid not in [d["id"] for d in self._list_ios_devices()]:
+            return {"result": "failed", "message": "iPhone が見つかりません。USB で接続してください。"}
+        try:
+            res = _run_go_ios([self.ios, f"--udid={udid}", "devmode", "enable"], timeout=30, text=True)
+        except Exception as e:
+            return {"result": "failed", "message": str(e)}
+        output = (res.stdout or "") + (res.stderr or "")
+        if DEVMODE_REVEALED_MARKER in output:
+            return {"result": "revealed"}
+        errors = [m for m in (go_ios_error_message(line) for line in output.splitlines()) if m]
+        if errors:
+            return {"result": "failed", "message": errors[-1]}
+        return {"result": "enabled"}
+
+    def android_setup_status(self):
+        """USB で接続された Android 端末の準備状況を [{"id", "name", "state", "hint"}] で返す（hint は撮影できない状態の対処）。"""
+        try:
+            entries = self._android_usb_entries()
+        except Exception as e:
+            print(f"DEBUG: Android setup check failed: {e}")
+            return []
+        for entry in entries:
+            entry["hint"] = None if entry["state"] == "device" else ANDROID_STATE_HINTS.get(
+                entry["state"], f"撮影できる状態ではありません（adbの状態: {entry['state']}）。")
+        return entries
+
+    def restart_adb_server(self):
+        """adb サーバーを起動し直す（端末に USB デバッグの許可ダイアログを出し直すため）。成功したらTrue。"""
+        self.stop_adb_server()
+        try:
+            return _run([self.adb, "start-server"], timeout=10).returncode == 0
+        except Exception as e:
+            print(f"⚠️ adb サーバーの起動に失敗しました: {e}")
+            return False
 
     # ------------------------------------------------------------------
     # 終了時の後始末

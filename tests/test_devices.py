@@ -283,3 +283,76 @@ def test_ios_screenshot_once_reads_go_ios_error(manager, monkeypatch):
     monkeypatch.setattr(dm_module.subprocess, "run", run)
     assert manager._ios_screenshot_once({"id": "U", "os": "ios"}) == (None, "could not connect to RSD")
     assert seen.env["ENABLE_GO_IOS_AGENT"] == "user"
+
+
+# 仕様: docs/spec/setup-guide.md（セットアップガイドの状態確認）
+def test_android_setup_status_reports_states_and_hints(manager, monkeypatch):
+    out = (ADB_HEADER
+           + "READY1 device usb:1-1 product:x model:moto_g24\n"
+           + "WAIT22 unauthorized usb:1-2 transport_id:2\n"
+           + "192.168.0.5:5555 device product:x model:Pixel_7\n")
+    monkeypatch.setattr(manager, "_adb_devices", lambda: _completed(out))
+    ready, waiting = manager.android_setup_status()
+    assert (ready["id"], ready["state"], ready["name"], ready["hint"]) == ("READY1", "device", "moto g24", None)
+    assert (waiting["id"], waiting["state"]) == ("WAIT22", "unauthorized")
+    assert "USBデバッグが許可されていません" in waiting["hint"]
+
+
+def test_android_setup_status_adb_failure_returns_empty(manager, monkeypatch):
+    def fail():
+        raise OSError("no adb")
+    monkeypatch.setattr(manager, "_adb_devices", fail)
+    assert manager.android_setup_status() == []
+
+
+def test_restart_adb_server_kills_then_starts(manager, monkeypatch):
+    seen = []
+    monkeypatch.setattr(dm_module.subprocess, "run", lambda cmd, **kw: seen.append(cmd[1:]) or _completed())
+    assert manager.restart_adb_server() is True
+    assert seen == [["kill-server"], ["start-server"]]
+
+
+def test_ios_setup_status_unavailable_without_usbmuxd(manager, monkeypatch):
+    monkeypatch.setattr(dm_module, "_usbmuxd_connection_types", lambda: None)
+    assert manager.ios_setup_status() == {"available": False, "devices": []}
+
+
+def test_ios_setup_status_trust_and_developer_mode(manager, monkeypatch):
+    monkeypatch.setattr(dm_module, "_usbmuxd_connection_types", lambda: {"TRUSTED": "USB", "UNTRUSTED": "USB"})
+    monkeypatch.setattr(manager, "_list_ios_devices", lambda: [
+        {"id": "TRUSTED", "os": "ios", "name": "iPhone"}, {"id": "UNTRUSTED", "os": "ios", "name": None}])
+    monkeypatch.setattr(manager, "_ios_developer_mode", lambda udid: False)
+    assert manager.ios_setup_status() == {"available": True, "devices": [
+        {"id": "TRUSTED", "name": "iPhone", "trusted": True, "developerMode": False},
+        {"id": "UNTRUSTED", "name": None, "trusted": False, "developerMode": None}]}
+
+
+@pytest.mark.parametrize("stdout, expected", [
+    ('{"DeveloperModeEnabled":true}\n', True),
+    ('{"level":"INFO","msg":"x"}\n{"DeveloperModeEnabled":false}\n', False),
+    ('{"level":"ERROR","msg":"boom"}\n', None),
+])
+def test_ios_developer_mode_parses_output(manager, monkeypatch, stdout, expected):
+    monkeypatch.setattr(dm_module.subprocess, "run", lambda cmd, **kw: _completed(stdout))
+    assert manager._ios_developer_mode("UDID") is expected
+
+
+@pytest.mark.parametrize("stderr, expected", [
+    # パスコードを設定した端末: エラーで終了するが、項目は表示されている
+    ('{"level":"ERROR","msg":"Failed enabling developer mode","err":"EnableDevMode: Device has a passcode set (Developer Mode menu has been revealed in Settings)"}\n',
+     {"result": "revealed"}),
+    ('{"level":"ERROR","msg":"could not connect"}\n', {"result": "failed", "message": "could not connect"}),
+    ('{"level":"INFO","msg":"no udid specified"}\n', {"result": "enabled"}),
+])
+def test_enable_ios_developer_mode_results(manager, monkeypatch, stderr, expected):
+    monkeypatch.setattr(manager, "_list_ios_devices", lambda: [{"id": "UDID", "os": "ios", "name": "iPhone"}])
+    monkeypatch.setattr(dm_module.subprocess, "run", lambda cmd, **kw: _completed("", stderr))
+    assert manager.enable_ios_developer_mode("UDID") == expected
+
+
+def test_enable_ios_developer_mode_rejects_unknown_device(manager, monkeypatch):
+    monkeypatch.setattr(manager, "_list_ios_devices", lambda: [])
+    ran = []
+    monkeypatch.setattr(dm_module.subprocess, "run", lambda cmd, **kw: ran.append(cmd) or _completed())
+    assert manager.enable_ios_developer_mode("--evil")["result"] == "failed"
+    assert ran == []

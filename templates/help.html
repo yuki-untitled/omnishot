@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>使い方 - OmniShot</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
@@ -16,22 +17,31 @@
             <div></div>
         </div>
 
-        <div style="background: #161616; border: 1px solid #333; border-radius: 12px; padding: 18px; line-height: 1.7;">
+        <!-- 仕様: docs/spec/setup-guide.md（使い方ページのタブ） -->
+        <div class="help-tabs">
+            <button id="tab-usage" class="btn guide-tab active">📘 使い方</button>
+            <button id="tab-ios" class="btn guide-tab">🍏 iPhone の準備</button>
+            <button id="tab-android" class="btn guide-tab">🤖 Android の準備</button>
+            <button id="tab-trouble" class="btn guide-tab">🛠 困ったとき</button>
+        </div>
+
+        <div id="panel-usage" class="help-panel">
             <h2>1. 基本操作</h2>
-            <ul style="padding-left: 20px;">
+            <ul>
                 <li>画面上部の「使い方」ボタンからいつでもこのページに戻れます。</li>
                 <li>左上の「← 戻る」を押すとメイン画面に戻ります。</li>
+                <li>端末をつないだら、「接続確認」ボタンで、撮影できる状態かを確認できます。</li>
                 <li>「自動撮影」ボタンでキャプチャが開始されます。</li>
             </ul>
 
             <h2>2. モードの違い</h2>
-            <ul style="padding-left: 20px;">
+            <ul>
                 <li><b>静的モード</b>：画面に変化があったあと、指定した待ち時間を経過してから撮影します。</li>
                 <li><b>動的モード</b>：画面が静止しているかどうかを判定し、静止が確定したタイミングで1回撮影します。</li>
             </ul>
 
             <h2>3. 使い方の流れ</h2>
-            <ol style="padding-left: 20px;">
+            <ol>
                 <li>「チェック間隔」を設定します。小さいほど頻繁に画面をチェックします。</li>
                 <li>静的モードなら「静止待ち時間」、動的モードなら「判定回数」を設定します。</li>
                 <li>「自動撮影」をクリックしてキャプチャを開始します。</li>
@@ -40,7 +50,7 @@
             </ol>
 
             <h2>4. ギャラリーの使い方</h2>
-            <ul style="padding-left: 20px;">
+            <ul>
                 <li>画像をクリックするとプレビューが開きます。</li>
                 <li>プレビューで左右の矢印ボタンをクリックして画像を切り替えられます。</li>
                 <li>チェックボックスで画像を選択し、まとめて削除したりダウンロードしたりすることができます。</li>
@@ -48,19 +58,62 @@
             </ul>
 
             <h3>保存名について</h3>
-            <ul style="padding-left: 20px;">
+            <ul>
                 <li>画像はデフォルトで <strong>iOS_日付.png</strong> または <strong>Android_日付.png</strong> のような形式で保存されます。</li>
                 <li>また、画像の下の名前をクリックすると任意の名称に変更することができます。ダウンロード時にはこの名前が使用されます。</li>
                 <li>ダウンロードする際に、任意の名称を入力することでzipファイルの名称を決めることができます。</li>
             </ul>
 
-            <h2>5. トラブルシューティング</h2>
-            <ul style="padding-left: 20px;">
-                <li>画面表示が崩れる場合は、ブラウザの再読み込みを行ってください。</li>
-                <li>Wi-Fi / USB接続の問題がある場合は、スマホの再接続を試してください。</li>
-                <li>ログが遅いと感じたら、ブラウザのページを再読み込みするか、Web UI の更新を待ってください。</li>
+            <h2>5. セッションの使い方</h2>
+            <p>「自動撮影」を開始してから停止するまでが、1つのセッションです。ギャラリーには、セッションごとに見出しが付きます。</p>
+            <ul>
+                <li><b>名前の変更：</b>見出しのセッション名をクリックすると、好きな名前（50文字まで）に変更できます。空にすると「セッション N」に戻ります。</li>
+                <li><b>ダウンロード：</b>見出しの「ダウンロード」を押すと、そのセッションの画像を「セッション名.zip」にまとめて保存できます。ZIP の中のファイル名には、<code>001_</code>、<code>002_</code> のように連番が付きます。</li>
+                <li><b>並べ替え：</b>セッションの中の画像を、ドラッグ＆ドロップで並べ替えられます。並べた順が、ZIP の連番に反映されます。</li>
+                <li><b>全選択・削除：</b>見出しの「全選択」でそのセッションの画像を選択、「削除」でそのセッションの画像をまとめて削除できます。</li>
+                <li>セッション名と並べ替えた順序は、アプリを終了すると消えます。ZIP をダウンロードして持ち出してください。</li>
+            </ul>
+        </div>
+
+        <div id="panel-ios" class="help-panel" style="display: none;">
+            <h2>🍏 iPhone (iOS) の準備</h2>
+            <p>本アプリを使用するには、接続する iPhone 側で以下の「開発者向け設定」を有効にする必要があります。</p>
+            <ol>
+                <li>【Windowsの方のみ】<a href="https://www.apple.com/jp/itunes/" target="_blank" class="setup-link" style="font-weight: bold;">iTunes</a>をインストールします</li>
+                <li>iPhoneの<b>「設定」</b> ＞ <b>「プライバシーとセキュリティ」</b>を開く</li>
+                <li>最下部にある<b>「デベロッパーモード」</b>を開き、<b>ON</b> にする</li>
+                <li>端末を<b>再起動</b>し、ロック解除後に表示されるダイアログで<b>「オンにする」</b>をタップ</li>
+                <li>USB接続時、画面に出る「このコンピュータを信頼しますか？」で<b>「信頼」</b>をタップ</li>
+            </ol>
+            <div class="help-note">
+                💡 設定に「デベロッパーモード」の項目が見つからないときは、メイン画面の「接続確認」を開き、「デベロッパモードの項目を表示する」ボタンを押してください。
+            </div>
+        </div>
+
+        <div id="panel-android" class="help-panel" style="display: none;">
+            <h2>🤖 Android の準備</h2>
+            <p>本アプリを使用するには、接続する Android 端末側で以下の「開発者向け設定」を有効にする必要があります。</p>
+            <ol>
+                <li>スマホの<b>「設定」</b> ＞ <b>「端末情報」</b>（またはシステム）を開く</li>
+                <li><b>「ビルド番号」</b>を <b>7回連続でタップ</b>する（パスコード入力を求められます）</li>
+                <li>設定に戻り、追加された<b>「開発者オプション」</b>を開く</li>
+                <li><b>「USBデバッグ」</b>を <b>ON</b> にする</li>
+                <li>PCと接続時、スマホ画面に出る「USBデバッグを許可しますか？」を<b>許可</b>する</li>
+            </ol>
+            <div class="help-note">
+                💡 許可のダイアログが表示されないときは、メイン画面の「接続確認」を開き、「許可を要求する」ボタンを押してください。
+            </div>
+        </div>
+
+        <div id="panel-trouble" class="help-panel" style="display: none;">
+            <h2>🛠 困ったとき</h2>
+            <ul>
+                <li>端末が見つからない、撮影を始められないときは、メイン画面の「接続確認」を開き、足りない項目を確認してください。</li>
+                <li>USB 接続に問題があるときは、ケーブルを挿し直してください。</li>
+                <li>画面の表示が崩れるときや、ログの表示が遅いと感じたときは、アプリを終了して起動し直してください。</li>
             </ul>
         </div>
     </div>
+    <script type="module" src="{{ url_for('static', filename='js/help.js') }}"></script>
 </body>
 </html>

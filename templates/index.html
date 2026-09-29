@@ -9,40 +9,29 @@
 </head>
 <body>
 
-    <div id="guideModal" class="preview-modal" style="display: none; z-index: 2000;">
-        <div class="preview-content" style="background: #1a1a1a; padding: 25px; border-radius: 12px; max-width: 600px; width: 90%; border: 1px solid #333;">
-            <h2 style="margin-top: 0; color: #2ecc71; border-bottom: 2px solid #2ecc71; padding-bottom: 10px;">🚀 セットアップガイド</h2>
-            <p style="font-size: 14px; color: #bbb;">本アプリを使用するには、接続するスマートフォン側で以下の「開発者向け設定」を有効にする必要があります。</p>
-            
-            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                <button id="tabIosBtn" class="btn start guide-tab active">🍏 iPhone (iOS) の設定</button>
-                <button id="tabAndroidBtn" class="btn guide-tab">🤖 Android の設定</button>
+    <!-- 仕様: docs/spec/setup-guide.md（接続確認。「接続確認」ボタンで開き、開いている間、端末の状態を2秒ごとに更新する） -->
+    <div id="connectionModal" class="preview-modal" style="display: none; z-index: 2000;">
+        <div class="preview-content connection-content">
+            <h2 class="connection-title">🔌 接続確認</h2>
+            <p class="connection-lead">接続した端末が、撮影できる状態かを確認します。</p>
+
+            <!-- iPhone と Android は横に並べる（狭い幅では縦に並べる）。内容が長いときは、ここだけスクロールする -->
+            <div class="connection-body">
+            <div class="connection-columns">
+                <section class="connection-column">
+                    <h3 class="connection-section">🍏 iPhone <a href="{{ url_for('help_page') }}#ios" class="setup-link connection-help-link">手順を見る</a></h3>
+                    <div id="iosStatus" class="setup-status"></div>
+                </section>
+                <section class="connection-column">
+                    <h3 class="connection-section">🤖 Android <a href="{{ url_for('help_page') }}#android" class="setup-link connection-help-link">手順を見る</a></h3>
+                    <div id="androidStatus" class="setup-status"></div>
+                </section>
+            </div>
             </div>
 
-            <div id="guideIos" style="font-size: 14px; line-height: 1.6;">
-                <ol style="padding-left: 20px;">
-                    <li>【Windowsの方のみ】<a href="https://www.apple.com/jp/itunes/" target="_blank" style="color: #3498db; text-decoration: underline; font-weight: bold;">iTunes</a>をインストールします</li>
-                    <li>iPhoneの<b>「設定」</b> ＞ <b>「プライバシーとセキュリティ」</b>を開く</li>
-                    <li>最下部にある<b>「デベロッパーモード」</b>を開き、<b>ON</b> にする</li>
-                    <li>端末を<b>再起動</b>し、ロック解除後に表示されるダイアログで<b>「オンにする」</b>をタップ</li>
-                    <li>USB接続時、画面に出る「このコンピュータを信頼しますか？」で<b>「信頼」</b>をタップ</li>
-                </ol>
-            </div>
-
-            <div id="guideAndroid" style="font-size: 14px; line-height: 1.6; display: none;">
-                <ol style="padding-left: 20px;">
-                    <li>スマホの<b>「設定」</b> ＞ <b>「端末情報」</b>（またはシステム）を開く</li>
-                    <li><b>「ビルド番号」</b>を <b>7回連続でタップ</b>する（パスコード入力を求められます）</li>
-                    <li>設定に戻り、追加された<b>「開発者オプション」</b>を開く</li>
-                    <li><b>「USBデバッグ」</b>を <b>ON</b> にする</li>
-                    <li>PCと接続時、スマホ画面に出る「USBデバッグを許可しますか？」を<b>許可</b>する</li>
-                </ol>
-            </div>
-
-            <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0;">
-            
-            <div style="display: flex; justify-content: flex-end; align-items: center;">
-                <button id="closeGuideBtn" class="btn start" style="padding: 8px 20px;">閉じる</button>
+            <hr class="connection-divider">
+            <div class="connection-footer">
+                <button id="closeConnectionBtn" class="btn start" style="padding: 8px 20px;">閉じる</button>
             </div>
         </div>
     </div>
@@ -53,7 +42,6 @@
             <h1><img src="{{ url_for('static', filename='app-icon.png') }}" alt="" class="app-icon"> OmniShot</h1>
             <div class="header-actions">
                 <a href="{{ url_for('help_page') }}" class="btn header-btn header-help">ℹ️ 使い方</a>
-                <button id="openGuideBtn" class="btn header-btn header-guide">❓ 設定ガイド</button>
                 <button id="shutdownBtn" class="btn btn-danger header-btn header-exit">🛑 アプリ終了</button>
             </div>
         </div>
@@ -94,6 +82,8 @@
                     </select>
                 </label>
                 <button id="refreshDevicesBtn" class="btn btn-refresh" title="端末の一覧を更新">🔄 更新</button>
+                <!-- 仕様: docs/spec/setup-guide.md（接続確認。撮影中も押せる） -->
+                <button id="connectionCheckBtn" class="btn btn-refresh" title="端末の準備の状態を確認">🔌 接続確認</button>
 
                 <div class="action-group">
                     <!-- 仕様: docs/spec/manual-capture.md -->

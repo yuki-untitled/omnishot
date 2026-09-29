@@ -2,9 +2,9 @@
 // 画面の初期化
 // ==========================================================================
 import { initCapture, updateModeDisplay } from './capture.js';
+import { initConnectionCheck } from './connection.js';
 import { initDevices, loadDevices } from './devices.js';
 import { initGallery, updateGallery } from './gallery.js';
-import { initGuide } from './guide.js';
 import { startLogStream } from './logs.js';
 import { initPreview, openPreview } from './preview.js';
 
@@ -26,7 +26,7 @@ initCapture();
 initDevices();
 initGallery({ onOpenPreview: openPreview });
 initPreview();
-initGuide();
+initConnectionCheck();
 elShutdownBtn.addEventListener('click', shutdownApp);
 
 updateModeDisplay();

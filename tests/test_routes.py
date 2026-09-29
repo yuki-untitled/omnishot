@@ -248,3 +248,34 @@ def test_images_with_same_time_are_ordered_by_name(client, save_dir):
     _touch(save_dir, "a.png", 100)
     _touch(save_dir, "b.png", 100)
     assert client.get("/images").get_json()["images"] == ["b.png", "a.png"]
+
+
+# 仕様: docs/spec/setup-guide.md
+def test_setup_status(client, monkeypatch):
+    monkeypatch.setattr(dev_manager, "ios_setup_status", lambda: {"available": True, "devices": []})
+    monkeypatch.setattr(dev_manager, "android_setup_status", lambda: [{"id": "A", "state": "device"}])
+    data = client.get("/setup_status").get_json()
+    assert data["ios"] == {"available": True, "devices": []}
+    assert data["android"] == {"devices": [{"id": "A", "state": "device"}]}
+    assert isinstance(data["windows"], bool)
+
+
+def test_setup_ios_developer_mode(client, monkeypatch):
+    monkeypatch.setattr(dev_manager, "enable_ios_developer_mode", lambda udid: {"result": "revealed", "udid": udid})
+    assert client.post("/setup/ios_developer_mode", json={"udid": "U1"}).get_json() == {"result": "revealed", "udid": "U1"}
+    assert client.post("/setup/ios_developer_mode", json={}).status_code == 400
+
+
+def test_setup_android_authorization(client, monkeypatch):
+    monkeypatch.setattr(dev_manager, "restart_adb_server", lambda: True)
+    assert client.post("/setup/android_authorization").get_json() == {"result": "requested"}
+    monkeypatch.setattr(dev_manager, "restart_adb_server", lambda: False)
+    assert client.post("/setup/android_authorization").get_json() == {"result": "failed"}
+
+
+def test_setup_operations_are_refused_while_capturing(client, monkeypatch):
+    monkeypatch.setattr(dev_manager, "restart_adb_server", lambda: pytest.fail("撮影中に adb サーバーを止めてはいけない"))
+    monkeypatch.setattr(dev_manager, "enable_ios_developer_mode", lambda udid: pytest.fail("撮影中に実行してはいけない"))
+    state.is_running = True
+    assert client.post("/setup/android_authorization").status_code == 409
+    assert client.post("/setup/ios_developer_mode", json={"udid": "U1"}).status_code == 409
