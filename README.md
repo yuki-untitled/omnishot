@@ -20,6 +20,7 @@ OmniShot は、iOS および Android 端末の画面変化を検知し、自動�
 * [docs/spec/gallery.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/gallery.md) — Web UI ギャラリー・表示名編集
 * [docs/spec/session-grouping.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/session-grouping.md) — 撮影セッションのグルーピング
 * [docs/spec/native-window.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/native-window.md) — ネイティブウィンドウ化
+* [docs/spec/setup-guide.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/setup-guide.md) — 接続確認と準備の手順
 
 ## 📚 ドキュメント
 
