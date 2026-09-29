@@ -41,6 +41,8 @@
         <div class="header-top">
             <h1><img src="{{ url_for('static', filename='app-icon.png') }}" alt="" class="app-icon"> OmniShot</h1>
             <div class="header-actions">
+                <!-- 仕様: docs/spec/setup-guide.md（接続確認。「使い方」の左に置く。撮影中も押せる） -->
+                <button id="connectionCheckBtn" class="btn header-btn header-help" title="端末の準備の状態を確認">🔌 接続確認</button>
                 <a href="{{ url_for('help_page') }}" class="btn header-btn header-help">ℹ️ 使い方</a>
                 <button id="shutdownBtn" class="btn btn-danger header-btn header-exit">🛑 アプリ終了</button>
             </div>
@@ -82,8 +84,6 @@
                     </select>
                 </label>
                 <button id="refreshDevicesBtn" class="btn btn-refresh" title="端末の一覧を更新">🔄 更新</button>
-                <!-- 仕様: docs/spec/setup-guide.md（接続確認。撮影中も押せる） -->
-                <button id="connectionCheckBtn" class="btn btn-refresh" title="端末の準備の状態を確認">🔌 接続確認</button>
 
                 <div class="action-group">
                     <!-- 仕様: docs/spec/manual-capture.md -->

@@ -14,6 +14,10 @@ HOST = '127.0.0.1'
 PORT = 5001
 BASE_URL = f'http://{HOST}:{PORT}'
 
+# 仕様: docs/spec/native-window.md（ウィンドウの大きさの下限。撮影の設定欄が2行で収まる幅）
+WINDOW_SIZE = (1280, 860)
+WINDOW_MIN_SIZE = (940, 600)
+
 
 def _wait_for_server(timeout=10.0):
     """Flaskの起動完了を待つ。固定sleepではなく/statusへの短いポーリングで確認する。"""
@@ -85,6 +89,6 @@ if __name__ == '__main__':
     _accept_first_mouse_on_macos()
     # 仕様: docs/spec/bugs/LOCAL-033_アプリ化するとスクリーンショットをダウンロードできない.md
     webview.settings['ALLOW_DOWNLOADS'] = True
-    window = webview.create_window("OmniShot", BASE_URL, width=1280, height=860)
+    window = webview.create_window("OmniShot", BASE_URL, width=WINDOW_SIZE[0], height=WINDOW_SIZE[1], min_size=WINDOW_MIN_SIZE)
     window.events.closing += _shutdown_via_http
     webview.start()
