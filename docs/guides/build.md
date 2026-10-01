@@ -79,8 +79,10 @@ GitHub Actions（[.github/workflows/release.yml](../../.github/workflows/release
 3. GitHub の Actions タブで、ワークフロー「Release」が成功したことを確認する
 4. GitHub の Releases に下書きができているので、添付されたファイルをダウンロードして動作を確かめてから「Publish release」を押す
 
+- リリースノートの「ダウンロード」の表には、`mac-arm64`（Apple Silicon）・`mac-x64`（Intel）・`windows-x64` の3つを載せます。Intel と Windows は実機で未確認なら、注意点にそう書きます。
+- 配布物の版の番号は、タグ（例: `v1.0.0`）から CI が自動で埋め込みます（`omnishot/_build_version.py`。git の管理外）。アプリはこの番号を、起動時に GitHub Releases の最新の版と比べて、新しい版があれば画面で知らせます（[../spec/update-notification.md](../spec/update-notification.md)）。手元でビルドしたアプリ・開発時の実行には番号が無いため、この確認は行いません。
 - ライブラリの版は [constraints.txt](../../constraints.txt) で固定しています。ライブラリを更新したら、手元で動作を確かめてから constraints.txt も更新してください。
-- Mac 版は Apple Silicon のランナーでビルドするため、Apple Silicon の Mac でのみ動作します。Apple の署名・公証は受けていません。
+- Mac 版は、Apple Silicon 向け（`mac-arm64`）と Intel 向け（`mac-x64`）の2つを、それぞれのランナーでビルドします。ビルドした CPU の Mac でのみ動作します。Intel 向けは、実機で動作を確認していません。Apple の署名・公証は受けていません。
 - ビルドに失敗した場合は、タグを消して（`git push origin :refs/tags/v1.0.0` と `git tag -d v1.0.0`）修正後に付け直します。下書きが作られていれば、Releases の画面から削除します。
 
 ## 関連ガイド

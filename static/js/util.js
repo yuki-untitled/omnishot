@@ -39,3 +39,13 @@ export function timestampString(date) {
     const pad = (n) => String(n).padStart(2, '0');
     return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
+
+// 仕様: docs/spec/capture-metadata.md（取得できなかった撮影情報の項目の表示）
+export const UNKNOWN_INFO = '不明';
+
+const OS_LABELS = { ios: 'iOS', android: 'Android' };
+
+// "iOS 17.5.1"（版が取得できなかったときは "iOS 不明"）
+export function osLabel(info) {
+    return `${OS_LABELS[info.os] || info.os} ${info.osVersion || UNKNOWN_INFO}`;
+}

@@ -7,6 +7,7 @@ import { initDevices, loadDevices } from './devices.js';
 import { initGallery, updateGallery } from './gallery.js';
 import { startLogStream } from './logs.js';
 import { initPreview, openPreview } from './preview.js';
+import { initUpdateNotice } from './update.js';
 
 const elShutdownBtn = document.getElementById('shutdownBtn');
 
@@ -27,6 +28,7 @@ initDevices();
 initGallery({ onOpenPreview: openPreview });
 initPreview();
 initConnectionCheck();
+initUpdateNotice();
 elShutdownBtn.addEventListener('click', shutdownApp);
 
 updateModeDisplay();

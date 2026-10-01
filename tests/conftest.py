@@ -16,6 +16,8 @@ def save_dir(tmp_path, monkeypatch):
             monkeypatch.setattr(module, "SAVE_DIR", str(tmp_path))
         if hasattr(module, "DISPLAY_NAMES_FILE"):
             monkeypatch.setattr(module, "DISPLAY_NAMES_FILE", str(tmp_path / "display_names.json"))
+        if hasattr(module, "CAPTURE_INFO_FILE"):
+            monkeypatch.setattr(module, "CAPTURE_INFO_FILE", str(tmp_path / "capture_info.json"))
     return tmp_path
 
 
@@ -26,6 +28,13 @@ def go_ios_work_dir(tmp_path, monkeypatch):
     work_dir = tmp_path / "go-ios-work"
     monkeypatch.setattr(paths, "GO_IOS_WORK_DIR", str(work_dir))
     return work_dir
+
+
+@pytest.fixture(autouse=True)
+def no_os_version_lookup(monkeypatch):
+    """撮影情報の OS の版の問い合わせで、テストが実際の adb を呼ばないようにする。"""
+    from omnishot.device_manager import dev_manager
+    monkeypatch.setattr(dev_manager, "device_os_version", lambda device: None)
 
 
 @pytest.fixture(autouse=True)
@@ -42,4 +51,6 @@ def reset_state():
     state.current_session_id = None
     state.sessions.clear()
     state.image_sessions.clear()
+    state.update_info = {"status": "none"}
+    state.update_dismissed = False
     yield

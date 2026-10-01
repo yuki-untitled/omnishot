@@ -21,6 +21,8 @@ const elDownloadCount = document.getElementById('downloadCount');
 export const gallery = {
     allImages: [],
     displayNames: {},
+    // 仕様: docs/spec/capture-metadata.md（ファイル名 -> 撮影情報。撮影情報の無い画像は持たない）
+    captureInfo: {},
     // 仕様: docs/spec/session-grouping.md（ファイル名 -> セッションID、セッションID -> セッション情報）
     imageSessions: {},
     sessions: {},
@@ -52,6 +54,7 @@ export function reloadGallery() {
                 currentImagesJson = newJson;
                 gallery.allImages = data.images;
                 gallery.displayNames = data.displayNames || {};
+                gallery.captureInfo = data.captureInfo || {};
                 // 仕様: docs/spec/session-grouping.md
                 gallery.imageSessions = data.imageSessions || {};
                 gallery.sessions = data.sessions || {};

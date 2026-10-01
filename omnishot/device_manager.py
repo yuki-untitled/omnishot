@@ -177,6 +177,9 @@ class DeviceManager:
         # 仕様: docs/spec/device-selection.md
         # 直近の一覧の検出で見つかった、撮影できる状態ではない Android 端末の理由（ログ表示用）
         self.android_device_problems = []
+        # 仕様: docs/spec/capture-metadata.md
+        # 端末の識別子 -> OS の版（撮影のたびに端末へ問い合わせないための控え。取得できたものだけを持つ）
+        self._os_versions = {}
         # 仕様: docs/spec/bugs/LOCAL-017_ストリーム接続の一時的な切断で自動撮影全体が停止する.md
         # go-iosの標準エラー出力から拾った、直近の致命的エラーの内容（無ければNone）。
         # HTTP接続が切れた際のメッセージ（例:「Remote end closed connection without response」）
@@ -274,11 +277,40 @@ class DeviceManager:
 
     def _ios_device_name(self, udid):
         """端末名を返す。この Mac が信頼していない端末などで取得できなければ None。"""
+        return self._ios_device_info(udid)[0]
+
+    def _ios_device_info(self, udid):
+        """(端末名, iOS の版) を返す。取得できなかった項目は None。
+
+        仕様: docs/spec/capture-metadata.md（版は撮影情報に使うため、端末名と同じ問い合わせで控えておく）
+        """
         try:
             res = _run_go_ios([self.ios, f"--udid={udid}", "info"], timeout=3.0, text=True)
-            return next((data["DeviceName"] for data in _json_lines(res.stdout) if data.get("DeviceName")), None)
+            info = next((data for data in _json_lines(res.stdout) if data.get("DeviceName")), {})
         except Exception:
-            return None
+            info = {}
+        version = info.get("ProductVersion") or None
+        if version:
+            self._os_versions[udid] = version
+        return info.get("DeviceName"), version
+
+    def device_os_version(self, device):
+        """端末の OS の版（例: "17.5.1"・"14"）を返す。取得できなければ None。
+
+        仕様: docs/spec/capture-metadata.md
+        iOS の版は、一覧の検出のときに控えたものを返す。Android は端末に問い合わせて控える。
+        """
+        version = self._os_versions.get(device["id"])
+        if version or device["os"] != "android":
+            return version
+        try:
+            res = _run(self.adb_command(device["id"], "shell", "getprop", "ro.build.version.release"), timeout=3.0, text=True)
+            version = res.stdout.strip() or None
+        except Exception:
+            version = None
+        if version:
+            self._os_versions[device["id"]] = version
+        return version
 
     def resolve_device(self, device_id=""):
         """選択された端末が接続されていれば、その端末を返す。成功時は ({"id", "os", "name"}, None)、失敗時は (None, メッセージ)。
@@ -310,6 +342,9 @@ class DeviceManager:
         device, error_msg = self.resolve_device(device_id)
         if not device:
             return None, error_msg
+
+        # 仕様: docs/spec/capture-metadata.md（撮影情報の OS の版。最初の1枚の保存を待たせないよう、先に控えておく）
+        self.device_os_version(device)
 
         if device["os"] == "android":
             # Androidは AndroidScreencapReceiver が `adb exec-out screencap` を

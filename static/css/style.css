@@ -69,6 +69,31 @@ body {
     box-shadow: 0 -20px 0 20px var(--bg), 0 4px 15px rgba(0, 0, 0, 0.5);
 }
 
+/* 仕様: docs/spec/update-notification.md（新しい版の通知。固定枠の最上段に1行で表示する） */
+.update-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 6px 10px;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    background: var(--accent-soft);
+}
+
+.update-message {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    color: var(--text);
+}
+
+.update-btn {
+    padding: 4px 12px;
+    white-space: nowrap;
+}
+
 .header-top {
     display: flex;
     align-items: center;
@@ -612,7 +637,7 @@ input[type="number"] {
     display: block;
     margin: 0 auto;
     max-width: 100%;
-    max-height: 90vh;
+    max-height: calc(90vh - 90px);  /* 下に、ファイル名と撮影情報（3行）を表示する分を空ける */
     height: auto;
     object-fit: contain;
 }
@@ -638,6 +663,7 @@ input[type="number"] {
     margin-top: 12px;
     font-size: 14px;
     color: var(--text);
+    white-space: pre-line;  /* 撮影情報を、項目ごとに改行して並べる */
 }
 
 .preview-actions-corner {

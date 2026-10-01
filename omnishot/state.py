@@ -32,6 +32,12 @@ active_device = None
 # 手動撮影の連打による多重保存を防ぐためのロック。
 manual_capture_lock = threading.Lock()
 
+# 仕様: docs/spec/update-notification.md
+# 起動時の新しい版の確認の結果。status は "checking"（確認中）・"none"（通知しない）・"available"（新しい版がある。
+# このときは latest・current・url も持つ）。dismissed は、画面で通知を閉じたかどうか。いずれも起動のたびに初期化される。
+update_info = {"status": "none"}
+update_dismissed = False
+
 # 仕様: docs/spec/session-grouping.md
 # いずれもアプリを終了すると失われる（永続化しない）。
 # 次に開始するセッションへ振る番号のカウンタ。

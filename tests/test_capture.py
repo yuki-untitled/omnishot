@@ -1,6 +1,7 @@
 # 仕様: docs/spec/screenshot-capture.md
 # 仕様: docs/spec/manual-capture.md
 # 画面の解読・変化の判定・保存ファイル名・自動撮影のループ・手動撮影
+import json
 import struct
 import types
 
@@ -118,6 +119,69 @@ def test_save_frame_file_name(save_dir, fixed_time, device_type, prefix, manual,
     assert (save_dir / expected).exists()
 
 
+# ---------------------------------------------------------------------------
+# 撮影情報
+# 仕様: docs/spec/capture-metadata.md
+# ---------------------------------------------------------------------------
+def _recorded_info(save_dir, name):
+    return json.loads((save_dir / "capture_info.json").read_text(encoding="utf-8"))[name]
+
+
+@pytest.fixture
+def info_time(monkeypatch):
+    fake = types.SimpleNamespace(
+        strftime=lambda fmt: "20260924_153000" if "%Y%m%d" in fmt else "2026-09-24 15:30:00",
+        time=lambda: 0.0, sleep=lambda s: None)
+    monkeypatch.setattr(capture, "time", fake)
+
+
+def test_save_frame_records_capture_info(save_dir, info_time, monkeypatch):
+    monkeypatch.setattr(capture.dev_manager, "device_os_version", lambda device: "17.5.1")
+    device = {"id": "U", "os": "ios", "name": "Eidome's iPhone"}
+    frame = np.zeros((30, 20, 3), dtype=np.uint8)
+    name = capture._save_frame(frame, "ios", "", device=device)
+    assert _recorded_info(save_dir, name) == {
+        "capturedAt": "2026-09-24 15:30:00", "deviceName": "Eidome's iPhone", "os": "ios",
+        "osVersion": "17.5.1", "width": 20, "height": 30, "manual": False}
+    # 記録した解像度は、保存した画像ファイルの実際の大きさと一致する
+    saved = cv2.imread(str(save_dir / name))
+    assert saved.shape[:2] == (30, 20)
+
+
+def test_save_frame_uses_active_device_when_auto(save_dir, info_time):
+    state.active_device = {"id": "A", "os": "android", "name": "Pixel 7"}
+    name = capture._save_frame(solid(0), "android", "")
+    info = _recorded_info(save_dir, name)
+    assert (info["deviceName"], info["manual"]) == ("Pixel 7", False)
+
+
+def test_manual_capture_records_manual(save_dir, info_time, monkeypatch):
+    device = {"id": "I", "os": "ios", "name": "iPhone"}
+    monkeypatch.setattr(capture.dev_manager, "resolve_device", lambda device_id: (device, None))
+    monkeypatch.setattr(capture.dev_manager, "capture_single_frame", lambda d: solid(0))
+    name, _ = capture.manual_capture("I")
+    info = _recorded_info(save_dir, name)
+    assert (info["manual"], info["deviceName"]) == (True, "iPhone")
+
+
+def test_save_frame_with_unknown_device_info_still_saves(save_dir, info_time):
+    name = capture._save_frame(solid(0), "android", "", device={"id": "A", "os": "android", "name": None})
+    info = _recorded_info(save_dir, name)
+    assert info["deviceName"] is None and info["osVersion"] is None
+    assert (save_dir / name).exists()
+
+
+def test_save_frame_survives_capture_info_failure(save_dir, info_time, monkeypatch):
+    def fail(filename, info):
+        raise OSError("disk full")
+    logs = []
+    monkeypatch.setattr(capture.capture_info, "record", fail)
+    monkeypatch.setattr(capture, "add_log", logs.append)
+    name = capture._save_frame(solid(0), "ios", "")
+    assert (save_dir / name).exists()
+    assert any("撮影情報を保存できませんでした" in m for m in logs)
+
+
 def test_save_frame_records_session(save_dir, fixed_time):
     state.current_session_id = 3
     name = capture._save_frame(solid(0), "ios", "")
@@ -184,7 +248,7 @@ def run_loop(monkeypatch, receivers, mode, interval=0.1, settling=0.3, start_res
     def sleep(seconds):
         current["receiver"].advance() if current["receiver"] else None
 
-    def save_frame(frame, device_type, prefix, manual=False):
+    def save_frame(frame, device_type, prefix, manual=False, device=None):
         receiver = current["receiver"]
         saved.append(next(i for i, f in enumerate(receiver.frames) if f is frame))
         return "x.png"

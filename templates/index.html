@@ -38,6 +38,12 @@
 
 
     <div class="header">
+        <!-- 仕様: docs/spec/update-notification.md（新しい版があるときだけ表示する通知） -->
+        <div id="updateBanner" class="update-banner" style="display: none;">
+            <span id="updateMessage" class="update-message"></span>
+            <button id="updateOpenBtn" class="btn btn-info update-btn">ダウンロードページを開く</button>
+            <button id="updateCloseBtn" class="btn btn-secondary update-btn">閉じる</button>
+        </div>
         <div class="header-top">
             <h1><img src="{{ url_for('static', filename='app-icon.png') }}" alt="" class="app-icon"> OmniShot</h1>
             <div class="header-actions">

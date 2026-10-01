@@ -6,7 +6,7 @@ import time
 import cv2
 import numpy as np
 
-from . import state
+from . import capture_info, state
 from .device_manager import IOS_STREAM_PORT, dev_manager
 from .logs import add_log
 from .paths import SAVE_DIR
@@ -34,7 +34,28 @@ def _create_receiver(device):
     return iOSStreamReceiver(f"http://127.0.0.1:{IOS_STREAM_PORT}")
 
 
-def _save_frame(frame, device_type, prefix, manual=False):
+def _record_capture_info(filename, frame, device_type, device, manual):
+    """画像1枚の撮影情報を保存する。失敗しても撮影は失敗にしない。
+
+    仕様: docs/spec/capture-metadata.md
+    """
+    device = device or state.active_device or {}
+    height, width = frame.shape[:2]
+    try:
+        capture_info.record(filename, {
+            "capturedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "deviceName": device.get("name"),
+            "os": device_type.lower(),
+            "osVersion": dev_manager.device_os_version(device) if device.get("id") else None,
+            "width": width,
+            "height": height,
+            "manual": manual,
+        })
+    except OSError as e:
+        add_log(f"⚠️ 撮影情報を保存できませんでした: {e}")
+
+
+def _save_frame(frame, device_type, prefix, manual=False, device=None):
     """フレームをキャプチャ保存先へPNGとして保存し、保存したファイル名を返す。
 
     仕様: docs/spec/manual-capture.md（手動撮影は "Manual_" を付けて自動撮影と区別する）
@@ -45,6 +66,7 @@ def _save_frame(frame, device_type, prefix, manual=False):
     manual_marker = "Manual_" if manual else ""
     final_name = f"{prefix}_{manual_marker}{device_label}_{timestamp}.png" if prefix else f"{manual_marker}{device_label}_{timestamp}.png"
     cv2.imwrite(os.path.join(SAVE_DIR, final_name), frame)
+    _record_capture_info(final_name, frame, device_type, device, manual)
     if state.current_session_id is not None:
         state.image_sessions[final_name] = state.current_session_id
     add_log(f"📸 撮影完了: {final_name}")
@@ -64,7 +86,8 @@ def manual_capture(device_id):
         # 自動撮影が動作中なら、その受信中のフレームをそのまま使う（新たにストリームは開始しない）
         if state.is_running and state.active_receiver is not None:
             frame = state.active_receiver.latest_frame
-            device_type = state.active_device["os"]
+            device = state.active_device
+            device_type = device["os"]
         else:
             # 自動撮影が停止中の場合は、端末を決めて1回分だけ画面を取得する
             device, error_msg = dev_manager.resolve_device(device_id)
@@ -75,7 +98,7 @@ def manual_capture(device_id):
 
         if frame is None:
             return None, CAPTURE_FAILED_MESSAGE
-        return _save_frame(frame, device_type, state.current_config["prefix"], manual=True), None
+        return _save_frame(frame, device_type, state.current_config["prefix"], manual=True, device=device), None
     finally:
         state.manual_capture_lock.release()
 

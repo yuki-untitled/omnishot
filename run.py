@@ -7,7 +7,7 @@ import urllib.request
 
 import webview
 
-from omnishot import create_app, port_guard
+from omnishot import create_app, port_guard, update_check
 from omnishot.logs import add_log
 
 HOST = '127.0.0.1'
@@ -78,6 +78,8 @@ if __name__ == '__main__':
         daemon=True,
     ).start()
     _wait_for_server()
+    # 仕様: docs/spec/update-notification.md（新しい版の確認は、画面の表示を待たせず、起動時に1回だけ始める）
+    update_check.start_background()
 
     _accept_first_mouse_on_macos()
     # 仕様: docs/spec/bugs/LOCAL-033_アプリ化するとスクリーンショットをダウンロードできない.md

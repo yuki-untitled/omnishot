@@ -356,3 +356,37 @@ def test_enable_ios_developer_mode_rejects_unknown_device(manager, monkeypatch):
     monkeypatch.setattr(dm_module.subprocess, "run", lambda cmd, **kw: ran.append(cmd) or _completed())
     assert manager.enable_ios_developer_mode("--evil")["result"] == "failed"
     assert ran == []
+
+
+# 仕様: docs/spec/capture-metadata.md（撮影情報の OS の版）
+def test_ios_device_info_returns_name_and_version(manager, monkeypatch):
+    out = json.dumps({"DeviceName": "iPhone", "ProductVersion": "17.5.1"}) + "\n"
+    monkeypatch.setattr(dm_module.subprocess, "run", lambda cmd, **kw: _completed(out))
+    assert manager._ios_device_info("U") == ("iPhone", "17.5.1")
+    assert manager.device_os_version({"id": "U", "os": "ios"}) == "17.5.1"
+
+
+def test_ios_version_unknown_when_info_fails(manager, monkeypatch):
+    monkeypatch.setattr(dm_module.subprocess, "run", lambda cmd, **kw: _completed(""))
+    assert manager._ios_device_info("U") == (None, None)
+    assert manager.device_os_version({"id": "U", "os": "ios"}) is None
+
+
+def test_android_version_is_fetched_once(manager, monkeypatch):
+    calls = []
+    def run(cmd, **kw):
+        calls.append(cmd)
+        return _completed("14\n")
+    monkeypatch.setattr(dm_module.subprocess, "run", run)
+    device = {"id": "SER", "os": "android"}
+    assert manager.device_os_version(device) == "14"
+    assert manager.device_os_version(device) == "14"
+    assert len(calls) == 1
+    assert calls[0][-3:] == ["shell", "getprop", "ro.build.version.release"]
+
+
+def test_android_version_unknown_when_adb_fails(manager, monkeypatch):
+    def run(cmd, **kw):
+        raise OSError("adb")
+    monkeypatch.setattr(dm_module.subprocess, "run", run)
+    assert manager.device_os_version({"id": "SER", "os": "android"}) is None

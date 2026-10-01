@@ -1,9 +1,10 @@
 // ==========================================================================
 // 画像のプレビュー
 // 仕様: docs/spec/gallery.md
+// 仕様: docs/spec/capture-metadata.md
 // ==========================================================================
 import { gallery, reloadGallery } from './gallery.js';
-import { captureUrl, downloadFrom, postJson } from './util.js';
+import { UNKNOWN_INFO, captureUrl, downloadFrom, osLabel, postJson } from './util.js';
 
 const elPreviewModal = document.getElementById('previewModal');
 const elPreviewImage = document.getElementById('previewImage');
@@ -28,13 +29,24 @@ export function openPreview(filename) {
     showPreview();
 }
 
+// 仕様: docs/spec/capture-metadata.md（プレビューには撮影日時・端末名・OS・解像度・撮影の種類を表示する。撮影情報の無い画像には出さない）
+function previewInfoText(index, total) {
+    const lines = [`${index + 1} / ${total} - ${currentFile}`];
+    const info = gallery.captureInfo[currentFile];
+    if (info) {
+        lines.push(`撮影日時: ${info.capturedAt}　端末: ${info.deviceName || UNKNOWN_INFO}`);
+        lines.push(`OS: ${osLabel(info)}　解像度: ${info.width}×${info.height}　撮影: ${info.manual ? '手動' : '自動'}`);
+    }
+    return lines.join('\n');
+}
+
 function showPreview() {
     const images = gallery.displayOrder;
     const index = currentIndex();
     if (index < 0) return;
 
     if (elPreviewImage) elPreviewImage.src = `${captureUrl(currentFile)}?t=${Date.now()}`;
-    if (elPreviewInfo) elPreviewInfo.innerText = `${index + 1} / ${images.length} - ${currentFile}`;
+    if (elPreviewInfo) elPreviewInfo.innerText = previewInfoText(index, images.length);
     if (elPreviewModal) elPreviewModal.style.display = 'flex';
 }
 

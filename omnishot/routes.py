@@ -3,6 +3,7 @@ import os
 import platform
 import threading
 import time
+import webbrowser
 from urllib.parse import quote
 
 from flask import render_template, request, jsonify, send_from_directory, send_file, Response
@@ -72,6 +73,30 @@ def register(app):
         for message in dev_manager.android_device_problems:
             add_log(message)
         return jsonify(devices)
+
+    # ------------------------------------------------------------------
+    # アップデート通知
+    # 仕様: docs/spec/update-notification.md
+    # ------------------------------------------------------------------
+    @app.route('/update_info')
+    def get_update_info():
+        # 通知を閉じた後は、同じ起動中は「通知しない」を返す
+        if state.update_dismissed:
+            return jsonify({"status": "none"})
+        return jsonify(state.update_info)
+
+    @app.route('/update_info/open', methods=['POST'])
+    def open_update_page():
+        # 開く先は画面から受け取らず、確認で得たリリースのページだけを、この PC の標準のブラウザで開く
+        if state.update_info.get("status") != "available":
+            return "No update", 404
+        webbrowser.open(state.update_info["url"])
+        return "Opened"
+
+    @app.route('/update_info/dismiss', methods=['POST'])
+    def dismiss_update_info():
+        state.update_dismissed = True
+        return "Dismissed"
 
     # ------------------------------------------------------------------
     # セットアップガイド

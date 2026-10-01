@@ -6,7 +6,7 @@ import re
 import time
 import zipfile
 
-from . import display_names, state
+from . import capture_info, display_names, state
 from .paths import SAVE_DIR
 
 _UNSAFE_CHARS = re.compile(r'[\\/\x00-\x1f]')
@@ -56,9 +56,13 @@ def gallery_data():
     names = display_names.load_all()
     # 仕様: docs/spec/session-grouping.md
     # 存在するキャプチャファイルの分だけセッションIDを返す（未登録＝未分類のファイルは含めない）
+    # 仕様: docs/spec/capture-metadata.md
+    # 存在するキャプチャファイルの分だけ撮影情報を返す（撮影情報の無い画像は含めない）
+    info = capture_info.load_all()
     return {
         "images": images,
         "displayNames": {name: names[name] for name in images if name in names},
+        "captureInfo": {name: info[name] for name in images if name in info},
         "imageSessions": {name: state.image_sessions[name] for name in images if name in state.image_sessions},
         "sessions": state.sessions,
     }
@@ -120,6 +124,8 @@ def delete_images(filenames):
         if os.path.exists(path): os.remove(path)
     # 仕様: docs/spec/bugs/LOCAL-001_表示名機能の未整合.md（削除との整合性）
     display_names.remove_display_names(filenames)
+    # 仕様: docs/spec/capture-metadata.md（画像と一緒に撮影情報も削除する）
+    capture_info.remove(filenames)
     # 仕様: docs/spec/session-grouping.md（削除済みファイルのセッション対応づけは残さない）
     for name in filenames:
         state.image_sessions.pop(name, None)

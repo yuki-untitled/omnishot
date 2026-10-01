@@ -3,6 +3,7 @@
 # 仕様: docs/spec/device-selection.md
 # 画面からの要求（Flask のエンドポイント）
 import io
+import json
 import os
 import zipfile
 
@@ -51,6 +52,7 @@ def test_images_newest_first_with_names_and_sessions(client, save_dir):
     assert client.get("/images").get_json() == {
         "images": ["iOS_2.png", "iOS_1.png"],
         "displayNames": {"iOS_1.png": "一枚目"},
+        "captureInfo": {},
         "imageSessions": {"iOS_2.png": 1},
         "sessions": {"1": {"startedAt": "2026/09/24 15:30:00"}},
     }
@@ -279,3 +281,37 @@ def test_setup_operations_are_refused_while_capturing(client, monkeypatch):
     state.is_running = True
     assert client.post("/setup/android_authorization").status_code == 409
     assert client.post("/setup/ios_developer_mode", json={"udid": "U1"}).status_code == 409
+
+
+# 仕様: docs/spec/capture-metadata.md
+INFO = {"capturedAt": "2026-10-01 12:34:56", "deviceName": "Pixel 7", "os": "android", "osVersion": "14",
+        "width": 1080, "height": 2400, "manual": False}
+
+
+def test_images_include_capture_info_only_for_existing_images(client, save_dir):
+    _touch(save_dir, "A_1.png", 100)
+    _touch(save_dir, "A_2.png", 200)
+    (save_dir / "capture_info.json").write_text(json.dumps({"A_1.png": INFO, "gone.png": INFO}), encoding="utf-8")
+    assert client.get("/images").get_json()["captureInfo"] == {"A_1.png": INFO}
+
+
+def test_delete_selected_removes_capture_info(client, save_dir):
+    _touch(save_dir, "A_1.png", 100)
+    _touch(save_dir, "A_2.png", 200)
+    (save_dir / "capture_info.json").write_text(json.dumps({"A_1.png": INFO, "A_2.png": INFO}), encoding="utf-8")
+    client.post("/delete_selected", json={"filenames": ["A_1.png"]})
+    assert json.loads((save_dir / "capture_info.json").read_text(encoding="utf-8")) == {"A_2.png": INFO}
+
+
+def test_clear_all_removes_capture_info(client, save_dir):
+    _touch(save_dir, "A_1.png", 100)
+    (save_dir / "capture_info.json").write_text(json.dumps({"A_1.png": INFO}), encoding="utf-8")
+    client.post("/clear_all")
+    assert not (save_dir / "capture_info.json").exists()
+
+
+def test_download_zip_does_not_include_capture_info(client, save_dir):
+    _touch(save_dir, "A_1.png", 100)
+    (save_dir / "capture_info.json").write_text(json.dumps({"A_1.png": INFO}), encoding="utf-8")
+    res = client.post("/download_selected", json={"filenames": ["A_1.png"]})
+    assert zipfile.ZipFile(io.BytesIO(res.data)).namelist() == ["A_1.png"]

@@ -7,3 +7,6 @@ __pycache__/
 captures/
 selfIdentity.plist
 .venv/.pytest_cache/
+
+# リリースのビルドで、タグから作られる版の番号
+omnishot/_build_version.py
