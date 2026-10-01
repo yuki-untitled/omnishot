@@ -4,12 +4,14 @@ OmniShot は、iOS および Android 端末の画面変化を検知し、自動�
 
 ## ✨ 主な機能
 
-* **クロスプラットフォーム対応:** Mac（Apple Silicon）および Windows 環境に対応。配布版は [GitHub Releases](https://github.com/yuki-untitled/omnishot/releases) からダウンロードできます。
+* **クロスプラットフォーム対応:** Mac（Apple Silicon・Intel）および Windows 環境に対応（Intel の Mac と Windows は実機未確認）。配布版は [GitHub Releases](https://github.com/yuki-untitled/omnishot/releases) からダウンロードできます。
 * **マルチOSキャプチャ:** 1つのアプリで iPhone (iOS) と Android 両方の画面キャプチャが可能。
 * **2つの自動撮影モード:** 静的モード／動的モードで、画面の変化や静止を検知して自動撮影。
 * **手動撮影:** 自動検知に加えて、任意のタイミングでシャッターを切ることも可能。
 * **Web UI ギャラリー:** キャプチャした画像をブラウザ上でリアルタイムに確認・管理。
 * **撮影セッションのグルーピング:** 撮影の開始〜停止を1セッションとしてギャラリー上で区切り表示。セッション名の変更、セッション単位の全選択・削除、セッション単位の ZIP ダウンロード（ファイル名に連番）、セッション内のドラッグ＆ドロップでの並べ替えができる。
+* **撮影情報の記録:** 画像ごとに撮影日時・端末名・OS・解像度・撮影の種類（自動／手動）を記録し、画像を開いたとき（プレビュー）に表示。
+* **アップデート通知:** 起動時に新しい版が公開されていれば、画面上部で知らせる（更新は手動）。
 * **表示名の編集:** ギャラリー上で任意の表示名に変更可能。サーバー側に永続化される。
 
 詳細な機能仕様は以下を参照してください。
@@ -19,6 +21,8 @@ OmniShot は、iOS および Android 端末の画面変化を検知し、自動�
 * [docs/spec/manual-capture.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/manual-capture.md) — 手動撮影
 * [docs/spec/gallery.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/gallery.md) — Web UI ギャラリー・表示名編集
 * [docs/spec/session-grouping.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/session-grouping.md) — 撮影セッションのグルーピング
+* [docs/spec/capture-metadata.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/capture-metadata.md) — 撮影情報（メタデータ）
+* [docs/spec/update-notification.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/update-notification.md) — アップデート通知
 * [docs/spec/native-window.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/native-window.md) — ネイティブウィンドウ化
 * [docs/spec/setup-guide.md](https://github.com/yuki-untitled/omnishot/blob/develop/docs/spec/setup-guide.md) — 接続確認と準備の手順
 
