@@ -4,6 +4,7 @@ import os
 import shutil
 
 from .device_manager import dev_manager
+from .logs import safe_print
 from .paths import SAVE_DIR
 
 
@@ -26,6 +27,6 @@ def cleanup_on_exit():
         dev_manager.stop_ios_tunnel()
         dev_manager.stop_adb_server()
         _cleanup_temp_data()
-        print("🧹 終了処理が完了しました。")
+        safe_print("🧹 終了処理が完了しました。")
     except Exception as e:
-        print(f"⚠️ クリーンアップ中にエラーが発生しました: {e}")
+        safe_print(f"⚠️ クリーンアップ中にエラーが発生しました: {e}")

@@ -11,6 +11,7 @@ import subprocess
 import time
 
 from . import paths
+from .logs import safe_print
 
 
 def _run(cmd, timeout=5):
@@ -101,7 +102,7 @@ def free_port(port, wait_seconds=3.0):
 def show_port_in_use_dialog(port):
     """別のアプリがポートを使っているため起動できないことを、ダイアログで知らせる。"""
     message = f"ポート {port} を他のアプリが使っているため、起動できません。そのアプリを終了してから、もう一度起動してください。"
-    print(f"❌ {message}")
+    safe_print(f"❌ {message}")
     try:
         if platform.system() == "Windows":
             import ctypes
@@ -110,4 +111,4 @@ def show_port_in_use_dialog(port):
             script = f'display dialog "{message}" with title "OmniShot" buttons {{"OK"}} default button "OK" with icon stop'
             _run(["osascript", "-e", script], timeout=120)
     except Exception as e:
-        print(f"⚠️ ダイアログを表示できませんでした: {e}")
+        safe_print(f"⚠️ ダイアログを表示できませんでした: {e}")
