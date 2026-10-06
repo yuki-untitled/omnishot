@@ -313,6 +313,19 @@ def test_restart_adb_server_kills_then_starts(manager, monkeypatch):
 
 
 # 仕様: docs/spec/bugs/LOCAL-048_Windowsでadbサーバーの起動時に固まり端末が一覧に出ない.md
+# 仕様: docs/spec/bugs/LOCAL-049_Windowsのadbが接続方法を出さずAndroid端末が一覧に出ない.md
+@pytest.mark.parametrize("line,listed", [
+    ("ZT322V4N35 device product:fogorow_gn model:moto_g24 device:fogorow transport_id:1", True),
+    ("192.168.0.5:5555 device product:x model:Pixel_7 transport_id:2", False),
+    ("adb-ZT322V4N35-AbCdEf._adb-tls-connect._tcp device product:x model:Pixel_7 transport_id:3", False),
+    ("emulator-5554 device product:sdk model:sdk transport_id:4", False),
+    ("192.168.0.5:5555 device usb:1-1 transport_id:2", True),
+])
+def test_android_usb_entry_without_usb_column(manager, monkeypatch, line, listed):
+    monkeypatch.setattr(manager, "_adb_devices", lambda: _completed(ADB_HEADER + line + "\n"))
+    assert bool(manager._android_usb_entries()) is listed
+
+
 def test_start_adb_server_does_not_use_pipes(manager, monkeypatch):
     seen = {}
 

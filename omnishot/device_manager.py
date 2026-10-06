@@ -36,6 +36,18 @@ DEVMODE_REVEALED_MARKER = "Developer Mode menu has been revealed"
 IOS_STREAM_PORT = 3333
 
 
+def _is_adb_usb_entry(serial, fields):
+    """adb devices -l の1行（端末の識別子と、状態より後の項目）が、USB 接続の端末かどうか。
+
+    仕様: docs/spec/bugs/LOCAL-049_Windowsのadbが接続方法を出さずAndroid端末が一覧に出ない.md
+    adb が接続方法（usb:）を出すときはそれに従う。Windows の adb は出さないため、出さないときは、
+    Wi-Fi（ワイヤレスデバッグ・IP:ポート）とエミュレータの識別子の形でないものを USB とみなす。
+    """
+    if any(f.startswith("usb:") for f in fields):
+        return True
+    return not (":" in serial or "_tcp" in serial or serial.startswith("emulator-"))
+
+
 def _run(cmd, timeout, env=None, text=False, cwd=None):
     """コンソールウィンドウを出さずにコマンドを実行し、出力を受け取る。"""
     return subprocess.run(cmd, env=env, cwd=cwd, capture_output=True, text=text, timeout=timeout,
@@ -227,7 +239,7 @@ class DeviceManager:
                 continue
             serial, adb_state = parts[0], parts[1]
             # 仕様: docs/spec/device-selection.md（USB接続の端末のみを対象にする）
-            if not any(p.startswith("usb:") for p in parts[2:]):
+            if not _is_adb_usb_entry(serial, parts[2:]):
                 continue
             model = next((p[len("model:"):] for p in parts if p.startswith("model:")), None)
             entries.append({
