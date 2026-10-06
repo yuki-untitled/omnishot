@@ -251,9 +251,25 @@ class DeviceManager:
         self.android_device_problems = problems
         return devices
 
+    def _start_adb_server(self, timeout=10.0):
+        """adb サーバーを起動する（動いていれば何もしない）。(終了コード, adb の標準エラー出力) を返す。
+
+        adb は常駐するサーバーを子プロセスとして起動し、その子が親の出力用パイプを持ったまま残る。
+        Windows ではパイプで出力を受け取ると、親が終わっても出力の終わりを待ち続けてタイムアウトするため、
+        パイプではなく一時ファイルに受ける。
+        """
+        with tempfile.TemporaryFile() as err:
+            res = subprocess.run([self.adb, "start-server"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                 stderr=err, timeout=timeout, creationflags=paths.CREATE_NO_WINDOW)
+            err.seek(0)
+            return res.returncode, err.read().decode("utf-8", errors="replace")
+
     def _adb_devices(self):
-        # サーバー起動を待つためタイムアウトを 5.0秒 に
-        return _run([self.adb, "devices", "-l"], timeout=5.0, text=True)
+        # サーバーの起動は、パイプを使わない _start_adb_server で先に済ませる（起動した旨は stderr に引き継ぐ）
+        _, started = self._start_adb_server()
+        res = _run([self.adb, "devices", "-l"], timeout=5.0, text=True)
+        res.stderr = started + (res.stderr or "")
+        return res
 
     def _list_ios_devices(self):
         devices = []
@@ -624,7 +640,7 @@ class DeviceManager:
         """adb サーバーを起動し直す（端末に USB デバッグの許可ダイアログを出し直すため）。成功したらTrue。"""
         self.stop_adb_server()
         try:
-            return _run([self.adb, "start-server"], timeout=10).returncode == 0
+            return self._start_adb_server()[0] == 0
         except Exception as e:
             print(f"⚠️ adb サーバーの起動に失敗しました: {e}")
             return False

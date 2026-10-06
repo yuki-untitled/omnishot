@@ -312,6 +312,27 @@ def test_restart_adb_server_kills_then_starts(manager, monkeypatch):
     assert seen == [["kill-server"], ["start-server"]]
 
 
+# 仕様: docs/spec/bugs/LOCAL-048_Windowsでadbサーバーの起動時に固まり端末が一覧に出ない.md
+def test_start_adb_server_does_not_use_pipes(manager, monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen.update(kw, cmd=cmd)
+        kw["stderr"].write(b"* daemon started successfully\n")
+        return _completed()
+    monkeypatch.setattr(dm_module.subprocess, "run", fake_run)
+    code, err = manager._start_adb_server()
+    assert (code, "daemon started successfully" in err) == (0, True)
+    assert seen["cmd"][1:] == ["start-server"]
+    assert seen["stdout"] == subprocess.DEVNULL and seen["stderr"] != subprocess.PIPE
+
+
+def test_adb_devices_passes_server_start_message(manager, monkeypatch):
+    monkeypatch.setattr(manager, "_start_adb_server", lambda timeout=10.0: (0, "* daemon started successfully\n"))
+    monkeypatch.setattr(dm_module, "_run", lambda cmd, **kw: _completed(ADB_HEADER))
+    assert "daemon started successfully" in manager._adb_devices().stderr
+
+
 def test_ios_setup_status_unavailable_without_usbmuxd(manager, monkeypatch):
     monkeypatch.setattr(dm_module, "_usbmuxd_connection_types", lambda: None)
     assert manager.ios_setup_status() == {"available": False, "devices": []}
