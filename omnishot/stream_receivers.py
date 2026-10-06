@@ -8,6 +8,7 @@ import urllib.request
 import cv2
 import numpy as np
 
+from . import paths
 from .logs import add_log
 
 
@@ -128,7 +129,7 @@ class AndroidScreencapReceiver(_FrameReceiver):
         use_raw = self.use_raw
         cmd = self.screencap_command + ([] if use_raw else ["-p"])
         started_at = time.time()
-        res = subprocess.run(cmd, capture_output=True, check=True)
+        res = subprocess.run(cmd, capture_output=True, check=True, creationflags=paths.CREATE_NO_WINDOW)
         if not res.stdout:
             return started_at, None
         if use_raw:

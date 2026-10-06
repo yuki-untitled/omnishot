@@ -387,3 +387,15 @@ def test_android_receiver_command(monkeypatch, use_raw, expected_tail):
                         lambda cmd, **kw: seen.append(cmd) or types.SimpleNamespace(stdout=b""))
     assert receiver._capture_once()[1] is None
     assert seen[0][-len(expected_tail):] == expected_tail
+
+
+# 仕様: docs/spec/bugs/LOCAL-050_Windowsで撮影中にコンソールのウィンドウが何度も表示される.md
+def test_android_receiver_hides_console_window(monkeypatch):
+    from omnishot import paths, stream_receivers
+    monkeypatch.setattr(paths, "CREATE_NO_WINDOW", 0x08000000)
+    seen = {}
+    receiver = stream_receivers.AndroidScreencapReceiver(["adb", "exec-out", "screencap"])
+    monkeypatch.setattr(stream_receivers.subprocess, "run",
+                        lambda cmd, **kw: seen.update(kw) or types.SimpleNamespace(stdout=b""))
+    receiver._capture_once()
+    assert seen["creationflags"] == 0x08000000
